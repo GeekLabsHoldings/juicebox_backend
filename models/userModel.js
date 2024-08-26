@@ -46,18 +46,28 @@ const userSchema = new Schema(
     },
     country: {
       type: String,
+      minlength: [2, "Country must be at least 2 characters long"],
+      maxlength: [50, "Country must be less than 50 characters long"],
     },
     address: {
       type: String,
+      minlength: [2, "Address must be at least 2 characters long"],
+      maxlength: [100, "Address name must be less than 50 characters long"],
     },
     city: {
       type: String,
+      minlength: [2, "City must be at least 2 characters long"],
+      maxlength: [50, "City must be less than 50 characters long"],
     },
     org: {
       type: String,
+      minlength: [2, "Org must be at least 2 characters long"],
+      maxlength: [50, "Org must be less than 50 characters long"],
     },
     position: {
       type: String,
+      minlength: [2, "Position must be at least 2 characters long"],
+      maxlength: [50, "Position must be less than 50 characters long"],
     },
     active: {
       type: Boolean,
