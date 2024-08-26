@@ -1,0 +1,95 @@
+const mongoose = require("mongoose");
+const bcrypt = require("bcryptjs");
+
+const { Schema } = mongoose;
+
+const userSchema = new Schema(
+  {
+    firstName: {
+      type: String,
+      required: [true, "First name is required"],
+      minlength: [2, "First name must be at least 2 characters long"],
+      maxlength: [50, "First name must be less than 50 characters long"],
+    },
+    lastName: {
+      type: String,
+      required: [true, "Last name is required"],
+      minlength: [2, "Last name must be at least 2 characters long"],
+      maxlength: [50, "Last name must be less than 50 characters long"],
+    },
+    email: {
+      type: String,
+      required: [true, "Email is required"],
+      unique: true,
+    },
+    password: {
+      type: String,
+      required: [true, "Password is required"],
+      minlength: [8, "Password must be at least 8 characters long"],
+    },
+    phoneNumber: {
+      type: String,
+      required: [true, "Phone number is required"],
+    },
+    role: {
+      type: String,
+      enum: ["user", "admin"],
+      default: "user",
+    },
+    DOB: {
+      type: Date,
+      required: [true, "Date of Birth is required"],
+    },
+    ISD: {
+      type: String,
+      required: [true, "Country code is required"],
+    },
+    country: {
+      type: String,
+    },
+    address: {
+      type: String,
+    },
+    city: {
+      type: String,
+    },
+    org: {
+      type: String,
+    },
+    position: {
+      type: String,
+    },
+    active: {
+      type: Boolean,
+      default: true,
+    },
+    passwordChangedAt: {
+      type: Date,
+    },
+    passwordResetCode: {
+      type: String,
+    },
+    passwordResetExpires: {
+      type: Date,
+    },
+    passwordResetVerified: {
+      type: Boolean,
+    },
+    verifyEmail: {
+      type: Boolean,
+      default: false,
+    },
+  },
+  {
+    timestamps: true,
+  }
+);
+
+userSchema.pre("save", async function (next) {
+  if (!this.isModified("password")) return next();
+  // Hashing user password
+  this.password = await bcrypt.hash(this.password, 12);
+  next();
+});
+
+module.exports = mongoose.model("User", userSchema);
