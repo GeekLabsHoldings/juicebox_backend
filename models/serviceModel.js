@@ -1,35 +1,43 @@
-const mongoose = require("mongoose");
-const { Schema } = mongoose;
+const mongoose = require('mongoose');
+const ApiError = require('../utils/apiError');
 
-const serviceSchema = new Schema(
-  {
-    name: {
-      type: String,
-      required: [true, "Service name is required"],
-      minlength: [2, "Service name must be at least 2 characters long"],
-      maxlength: [100, "Service name must be less than 100 characters long"],
-    },
-    details: {
-      type: Schema.Types.Mixed,
-      required: false,
-    },
-    price: {
-      type: Number,
-      required: [true, "Price is required"],
-      min: [0, "Price must be a positive number"],
-    },
-    duration: {
-      type: Number,
-      required: [true, "Duration is required"],
-    },
-    active: {
-      type: Boolean,
-      default: false,
-    },
-  },
-  {
-    timestamps: true,
+const optionSchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  choice: { type: String, required: true },
+  ans: { type: String },
+  price: { type: Number, required: true, min: 0 },
+  duration: { type: Number, required: true, min: 0 },
+});
+
+const serviceSchema = new mongoose.Schema({
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  type: { type: String, required: true },
+  options: [optionSchema],
+  status: { type: String, enum: ['draft', 'purchased'], default: 'draft' },
+  totalPrice: { type: Number, required: false },
+  estimatedDuration: { type: Number, required: false },
+});
+
+serviceSchema.pre('save', async function (next) {
+  try {
+    // Calculate total price and estimated duration
+    let totalPrice = 0;
+    let totalDuration = 0;
+
+    this.options.forEach(option => {
+      totalPrice += option.price;
+      totalDuration += option.duration;
+    });
+
+    this.totalPrice = totalPrice;
+    this.estimatedDuration = totalDuration;
+
+    next();
+  } catch (error) {
+    next(new ApiError('Error checking domain existence or calculating totals', 500));
   }
-);
+});
 
-module.exports = mongoose.model("Service", serviceSchema);
+const Service = mongoose.model('Service', serviceSchema);
+
+module.exports = Service;

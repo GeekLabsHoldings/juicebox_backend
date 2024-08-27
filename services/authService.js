@@ -1,7 +1,8 @@
-const jwt = require('jsonwebtoken');
-const asyncHandler = require('express-async-handler');
-const ApiError = require('../utils/apiError');
-const User = require('../models/userModel');
+const jwt = require("jsonwebtoken");
+const asyncHandler = require("express-async-handler");
+const ApiError = require("../utils/apiError");
+const User = require("../models/userModel");
+const { catchError } = require("../middlewares/cacheMiddleware");
 
 // @desc   make sure the user is logged in
 exports.protect = asyncHandler(async (req, res, next) => {
@@ -9,14 +10,14 @@ exports.protect = asyncHandler(async (req, res, next) => {
   let token;
   if (
     req.headers.authorization &&
-    req.headers.authorization.startsWith('Bearer')
+    req.headers.authorization.startsWith("Bearer")
   ) {
-    token = req.headers.authorization.split(' ')[1];
+    token = req.headers.authorization.split(" ")[1];
   }
   if (!token) {
     return next(
       new ApiError(
-        'You are not login, Please login to get access this route',
+        "You are not login, Please login to get access this route",
         401
       )
     );
@@ -30,7 +31,7 @@ exports.protect = asyncHandler(async (req, res, next) => {
   if (!currentUser) {
     return next(
       new ApiError(
-        'The user that belong to this token does no longer exist',
+        "The user that belong to this token does no longer exist",
         401
       )
     );
@@ -46,7 +47,7 @@ exports.protect = asyncHandler(async (req, res, next) => {
     if (passChangedTimestamp > decoded.iat) {
       return next(
         new ApiError(
-          'User recently changed his password. please login again..',
+          "User recently changed his password. please login again..",
           401
         )
       );
@@ -65,9 +66,23 @@ exports.allowedTo = (...roles) =>
     // 2) access registered user (req.user.role)
     if (!roles.includes(req.user.role)) {
       return next(
-        new ApiError('You are not allowed to access this route', 403)
+        new ApiError("You are not allowed to access this route", 403)
       );
     }
     next();
   });
 
+exports.verifyEmailWebhook = catchError(
+  asyncHandler(async (req, res) => {
+    const { email } = req.body;
+
+    const user = await User.findOne({ email });
+    if (user) {
+      user.verifyEmail = true;
+      await user.save();
+      return res.status(200).json({ message: "Email verified!" });
+    }
+
+    res.status(404).json({ message: "User not found" });
+  })
+);

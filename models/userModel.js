@@ -1,9 +1,7 @@
-const mongoose = require("mongoose");
+const mongoose = require('mongoose');
 const bcrypt = require("bcryptjs");
 
-const { Schema } = mongoose;
-
-const userSchema = new Schema(
+const userSchema = new mongoose.Schema(
   {
     firstName: {
       type: String,
@@ -89,6 +87,17 @@ const userSchema = new Schema(
       type: Boolean,
       default: false,
     },
+    stripeCustomerId: {
+      type: String,
+    },
+    paymentMethod: {
+      cardType: {
+        type: String,
+      },
+      token: {
+        type: String,
+      },
+    },
   },
   {
     timestamps: true,
@@ -102,4 +111,6 @@ userSchema.pre("save", async function (next) {
   next();
 });
 
-module.exports = mongoose.model("User", userSchema);
+const User = mongoose.model('User', userSchema);
+
+module.exports = User;
