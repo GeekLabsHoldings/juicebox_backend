@@ -1,21 +1,14 @@
 const multer = require('multer');
-const ApiError = require('../utils/apiError');
+const DataUriParser = require('datauri/parser.js');
+const path = require('path');
 
-const multerOptions = () => {
+const storage = multer.memoryStorage();
+const upload = multer({ storage });
+const parser = new DataUriParser();
 
-  const multerStorage = multer.memoryStorage();
-
-  const multerFilter = function (req, file, cb) {
-    if (file.mimetype.startsWith('image')) {
-      cb(null, true);
-    } else {
-      cb(new ApiError('Only Images allowed', 400), false);
-    }
-  };
-
-  const upload = multer({ storage: multerStorage, fileFilter: multerFilter });
-
-  return upload;
+const formatImage = (file) => {
+  const fileExtension = path.extname(file.originalname).toString();
+  return parser.format(fileExtension, file.buffer).content;
 };
 
-exports.uploadSingleImage = (fieldName) => multerOptions().single(fieldName);
+module.exports = { upload, formatImage };

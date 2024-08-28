@@ -3,7 +3,6 @@ const User = require("../models/userModel");
 const Payment = require("../models/paymentModel");
 const asyncHandler = require("express-async-handler");
 const { catchError } = require("../middlewares/cacheMiddleware");
-const ApiError = require("../utils/apiError");
 
 // Create a PaymentIntent with Stripe
 const createPaymentIntent = async (

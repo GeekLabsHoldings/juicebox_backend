@@ -1,12 +1,10 @@
 const mongoose = require('mongoose');
 
-const { MONGO_DB_URI } = process.env;
-
 const dbConnection = () => {
   mongoose
-    .connect(MONGO_DB_URI)
+    .connect(process.env.MONGO_DB_URI)
     .then((conn) => {
-      console.log(`Database Connected on host: ${conn.connection.host}`);
+      console.log(`MongoDB Connected on host: ${conn.connection.host}`);
     })
     .catch((err) => {
       console.error(`Database Error: ${err}`);

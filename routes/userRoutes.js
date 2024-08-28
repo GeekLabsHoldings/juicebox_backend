@@ -1,5 +1,5 @@
 const express = require('express');
-
+const { upload } = require('../middlewares/uploadImageMiddleware');
 const {
   getUser,
   getLoggedUserData,
@@ -17,7 +17,7 @@ router.use(authService.protect);
 
 router.get('/getMe', getLoggedUserData, getUser);
 router.put('/changeMyPassword', updateLoggedUserPassword);
-router.put('/updateMe', updateLoggedUserValidator, updateLoggedUserData);
+router.put('/updateMe', upload.single('avatar'), updateLoggedUserValidator, updateLoggedUserData);
 router.delete('/deleteMe', deleteLoggedUserData);
 
 module.exports = router;

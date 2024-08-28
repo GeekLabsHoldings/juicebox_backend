@@ -4,6 +4,9 @@ const createToken = require('../utils/createToken');
 const User = require('../models/userModel');
 const factory = require('../utils/handlersFactory');
 const { catchError } = require('../middlewares/cacheMiddleware')
+const cloudinary = require('cloudinary').v2;
+const { formatImage } = require('../middlewares/uploadImageMiddleware');
+const { formatPhoneNumber } = require('../helpers/phoneNumber');
 
 // @desc    Get specific user by id
 // @route   GET /api/v1/users/:id
@@ -45,10 +48,33 @@ exports.updateLoggedUserPassword = catchError(asyncHandler(async (req, res, next
 // @access  Private/Protect
 exports.updateLoggedUserData = catchError(asyncHandler(async (req, res, next) => {
   // 1. Filter out fields that shouldn't be updated
-  const fieldsToUpdate = { ...req.body };
+  const newUser = { ...req.body };
+  delete newUser.password;
+  delete newUser.role;
+
+  // Validate and format phone number
+  if (newUser.ISD && newUser.phoneNumber) {
+    newUser.phoneNumber = formatPhoneNumber(newUser.ISD, newUser.phoneNumber);
+  }
+
+  let updatedUser;
+  if (req.file) {
+    const file = formatImage(req.file);
+    
+    // Upload new avatar image
+    const response = await cloudinary.uploader.upload(file);
+    
+    newUser.avatar = response.secure_url;
+    newUser.avatarPublicId = response.public_id;
+
+    // Remove old avatar if it exists
+    if (req.user.avatarPublicId) {
+      await cloudinary.uploader.destroy(req.user.avatarPublicId);
+    }
+  }
 
   // 2. Update the user document
-  const updatedUser = await User.findByIdAndUpdate(req.user._id, fieldsToUpdate, {
+  updatedUser = await User.findByIdAndUpdate(req.user._id, newUser, {
     new: true,  // Return the updated document
     runValidators: true,  // Validate the update operation against the schema
   });

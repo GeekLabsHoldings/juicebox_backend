@@ -1,5 +1,5 @@
-const mongoose = require('mongoose');
-const ApiError = require('../utils/apiError');
+const mongoose = require("mongoose");
+const ApiError = require("../utils/apiError");
 
 const optionSchema = new mongoose.Schema({
   name: { type: String, required: true },
@@ -10,21 +10,27 @@ const optionSchema = new mongoose.Schema({
 });
 
 const serviceSchema = new mongoose.Schema({
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
   type: { type: String, required: true },
   options: [optionSchema],
-  status: { type: String, enum: ['draft', 'purchased'], default: 'draft' },
+  status: {
+    type: String,
+    enum: ["draft", "in-progress", "purchased"],
+    default: "draft",
+  },
   totalPrice: { type: Number, required: false },
   estimatedDuration: { type: Number, required: false },
+  currentStep: { type: Number, default: 1 }, // Track the current step
+  totalSteps: { type: Number, required: true }, // Total number of steps
 });
 
-serviceSchema.pre('save', async function (next) {
+serviceSchema.pre("save", async function (next) {
   try {
     // Calculate total price and estimated duration
     let totalPrice = 0;
     let totalDuration = 0;
 
-    this.options.forEach(option => {
+    this.options.forEach((option) => {
       totalPrice += option.price;
       totalDuration += option.duration;
     });
@@ -34,10 +40,12 @@ serviceSchema.pre('save', async function (next) {
 
     next();
   } catch (error) {
-    next(new ApiError('Error checking domain existence or calculating totals', 500));
+    next(
+      new ApiError("Error checking domain existence or calculating totals", 500)
+    );
   }
 });
 
-const Service = mongoose.model('Service', serviceSchema);
+const Service = mongoose.model("Service", serviceSchema);
 
 module.exports = Service;

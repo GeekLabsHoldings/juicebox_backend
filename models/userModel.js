@@ -29,6 +29,12 @@ const userSchema = new mongoose.Schema(
       type: String,
       required: [true, "Phone number is required"],
     },
+    avatar: {
+      type: String,
+    },
+    avatarPublicId: {
+      type: String,
+    },
     role: {
       type: String,
       enum: ["user", "admin"],
@@ -86,6 +92,12 @@ const userSchema = new mongoose.Schema(
     verifyEmail: {
       type: Boolean,
       default: false,
+    },
+    googleId: {
+      type: String,
+    },
+    appleId: {
+      type: String,
     },
     stripeCustomerId: {
       type: String,
