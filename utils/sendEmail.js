@@ -1,20 +1,19 @@
 const nodemailer = require('nodemailer');
-const { USER_ACCOUNT, USRE_PASSWORD, EMAIL_HOST, EMAIL_PORT } = process.env;
 
 exports.sendEmail = async (to, subject, htmlContent) => {
   const transporter = nodemailer.createTransport({
-    host: EMAIL_HOST,
-    port: EMAIL_PORT,
+    host: process.env.EMAIL_HOST,
+    port: process.env.EMAIL_PORT,
     secure: true,
     auth: {
-      user: USER_ACCOUNT,
-      pass: USRE_PASSWORD,
+      user: process.env.USER_ACCOUNT,
+      pass: process.env.USRE_PASSWORD,
     },
   });
 
   try {
-    const info = await transporter.sendMail({
-      from: `"Juice Box" <${USER_ACCOUNT}>`,
+    await transporter.sendMail({
+      from: `"Juice Box" <${process.env.USER_ACCOUNT}>`,
       to,
       subject,
       html: htmlContent,

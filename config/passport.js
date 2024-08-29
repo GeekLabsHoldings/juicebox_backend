@@ -1,8 +1,10 @@
 const passport = require("passport");
 const GoogleStrategy = require("passport-google-oauth20").Strategy;
-const AppleStrategy = require("passport-appleid").Strategy;
+const AppleStrategy = require("passport-apple");
 const User = require("../models/userModel");
 const jwt = require("jsonwebtoken");
+const { sendEmail } = require("../utils/sendEmail");
+const { verifyEmailTemplate } = require("../template/verifyEmail");
 
 // Configure Google Strategy
 passport.use(
@@ -16,31 +18,50 @@ passport.use(
       try {
         let user = await User.findOne({ googleId: profile.id });
         if (user) {
-          // Generate JWT token
-          const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET_KEY, {
-            expiresIn: process.env.JWT_EXPIRE_TIME,
-          });
-          return done(null, { user, token });
+          if (!user.verifyEmail) {
+            // Email not verified, resend verification email
+            const token = jwt.sign(
+              { email: user.email },
+              process.env.JWT_SECRET_KEY,
+              { expiresIn: process.env.JWT_EXPIRE_TIME }
+            );
+            await sendEmail(
+              user.email,
+              "Please Verify Your Email",
+              verifyEmailTemplate(token)
+            );
+            return done(null, false, { message: "Please verify your email" });
+          }
+          // User found and email verified
+          return done(null, user);
         }
 
-        // If user does not exist, create a new one
+        // Create a new user if not found
         const newUser = new User({
           googleId: profile.id,
           firstName: profile.name.givenName,
           lastName: profile.name.familyName,
           email: profile.emails[0].value,
-          password: "MyPassword$1",
+          password: "MyPassword$1", // Consider removing this if not needed
           avatar: profile._json.picture,
         });
 
         await newUser.save();
-        const token = jwt.sign({ id: newUser._id }, process.env.JWT_SECRET_KEY, {
-          expiresIn: process.env.JWT_EXPIRE_TIME,
-        });
+        // Send verification email
+        const token = jwt.sign(
+          { email: newUser.email },
+          process.env.JWT_SECRET_KEY,
+          { expiresIn: process.env.JWT_EXPIRE_TIME }
+        );
+        await sendEmail(
+          newUser.email,
+          "Please Verify Your Email",
+          verifyEmailTemplate(token)
+        );
 
-        return done(null, { user: newUser, token });
+        done(null, newUser);
       } catch (err) {
-        return done(err, null);
+        done(err);
       }
     }
   )
@@ -51,23 +72,35 @@ passport.use(
   new AppleStrategy(
     {
       clientID: process.env.APPLE_CLIENT_ID,
-      callbackURL: "/api/v1/auth/apple/callback",
       teamID: process.env.APPLE_TEAM_ID,
-      keyIdentifier: process.env.APPLE_KEY_ID,
-      privateKeyString: process.env.APPLE_PRIVATE_KEY,
+      callbackURL: "/api/v1/auth/apple/callback",
+      keyID: process.env.APPLE_KEY_ID,
+      privateKeyLocation: process.env.APPLE_PRIVATE_KEY,
+      passReqToCallback: true,
     },
-    async (accessToken, refreshToken, id_token, profile, done) => {
+    async (req, accessToken, refreshToken, idToken, profile, done) => {
       try {
         let user = await User.findOne({ appleId: profile.id });
         if (user) {
-          // Generate JWT token
-          const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET_KEY, {
-            expiresIn: process.env.JWT_EXPIRE_TIME,
-          });
-          return done(null, { user, token });
+          if (!user.verifyEmail) {
+            // Email not verified, resend verification email
+            const token = jwt.sign(
+              { email: user.email },
+              process.env.JWT_SECRET_KEY,
+              { expiresIn: process.env.JWT_EXPIRE_TIME }
+            );
+            await sendEmail(
+              user.email,
+              "Please Verify Your Email",
+              verifyEmailTemplate(token)
+            );
+            return done(null, false, { message: "Please verify your email" });
+          }
+          // User found and email verified
+          return done(null, user);
         }
 
-        // If user does not exist, create a new one
+        // Create a new user if not found
         const newUser = new User({
           appleId: profile.id,
           firstName: profile.name.firstName,
@@ -78,13 +111,21 @@ passport.use(
         });
 
         await newUser.save();
-        const token = jwt.sign({ id: newUser._id }, process.env.JWT_SECRET_KEY, {
-          expiresIn: process.env.JWT_EXPIRE_TIME,
-        });
+        // Send verification email
+        const token = jwt.sign(
+          { email: newUser.email },
+          process.env.JWT_SECRET_KEY,
+          { expiresIn: process.env.JWT_EXPIRE_TIME }
+        );
+        await sendEmail(
+          newUser.email,
+          "Please Verify Your Email",
+          verifyEmailTemplate(token)
+        );
 
-        return done(null, { user: newUser, token });
+        done(null, newUser);
       } catch (err) {
-        return done(err, null);
+        done(err);
       }
     }
   )
@@ -101,6 +142,6 @@ passport.deserializeUser(async (id, done) => {
     const user = await User.findById(id);
     done(null, user);
   } catch (err) {
-    done(err, null);
+    done(err);
   }
 });

@@ -24,6 +24,21 @@ function isSupportedTLD(tld) {
   return supportedTLDs.includes(tld);
 }
 
+async function getDomainPrice(tld) {
+  try {
+    const pricesCommand = new ListPricesCommand({ Tld: tld });
+    const pricesResponse = await client.send(pricesCommand);
+    const priceInfo = pricesResponse.Prices[0];
+    return {
+      registrationPrice: priceInfo.RegistrationPrice,
+      renewalPrice: priceInfo.RenewalPrice,
+    };
+  } catch (error) {
+    console.error(`Error fetching prices for .${tld}:`, error);
+    throw new Error(`Could not fetch price for .${tld} domain.`);
+  }
+}
+
 async function checkDomainExists(domain) {
   const domainTLD = getTLD(domain);
 
@@ -38,7 +53,13 @@ async function checkDomainExists(domain) {
     const availabilityResponse = await client.send(availabilityCommand);
 
     if (availabilityResponse.Availability === "AVAILABLE") {
-      return { available: true };
+      // Fetch the price for the available domain
+      const prices = await getDomainPrice(domainTLD);
+      return {
+        available: true,
+        prices,
+        message: `Domain ${domain} is available`,
+      };
     } else {
       // If not available, get domain suggestions
       const suggestionsCommand = new GetDomainSuggestionsCommand({
@@ -56,12 +77,22 @@ async function checkDomainExists(domain) {
         };
       }
 
-      // Filter suggestions based on supported TLDs
-      const filteredSuggestions = suggestionsResponse.SuggestionsList.filter(
-        (suggestion) => isSupportedTLD(getTLD(suggestion.DomainName))
-      ).map((suggestion) => ({
-        DomainName: suggestion.DomainName,
-      }));
+      // Fetch prices for suggested domains
+      const suggestionsWithPrices = await Promise.all(
+        suggestionsResponse.SuggestionsList.map(async (suggestion) => {
+          const suggestionTLD = getTLD(suggestion.DomainName);
+          if (isSupportedTLD(suggestionTLD)) {
+            const prices = await getDomainPrice(suggestionTLD);
+            return {
+              DomainName: suggestion.DomainName,
+              prices,
+            };
+          }
+        })
+      );
+
+      // Filter out any undefined values (if any TLD wasn't supported)
+      const filteredSuggestions = suggestionsWithPrices.filter(Boolean);
 
       return {
         available: false,

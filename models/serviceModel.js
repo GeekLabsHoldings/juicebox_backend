@@ -2,31 +2,57 @@ const mongoose = require("mongoose");
 const ApiError = require("../utils/apiError");
 
 const optionSchema = new mongoose.Schema({
-  name: { type: String, required: true },
-  choice: { type: String, required: true },
-  ans: { type: String },
+  name: { type: String, required: true, trim: true },
+  choice: { type: String, required: true, trim: true },
+  ans: { type: String, trim: true },
   price: { type: Number, required: true, min: 0 },
   duration: { type: Number, required: true, min: 0 },
 });
 
-const serviceSchema = new mongoose.Schema({
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
-  type: { type: String, required: true },
-  options: [optionSchema],
-  status: {
-    type: String,
-    enum: ["draft", "in-progress", "purchased"],
-    default: "draft",
+const serviceSchema = new mongoose.Schema(
+  {
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+      index: true, // Index for quick user-based lookups
+    },
+    type: {
+      type: String,
+      required: true,
+      trim: true,
+      index: true, // Index service type for quick filtering
+    },
+    options: [optionSchema],
+    status: {
+      type: String,
+      enum: ["in-progress", "purchased", "completed"],
+      default: "in-progress",
+      index: true, // Index service status for quick filtering
+    },
+    totalPrice: {
+      type: Number,
+    },
+    estimatedDuration: {
+      type: Number,
+    },
+    currentStep: {
+      type: Number,
+      default: 1,
+    },
+    totalSteps: {
+      type: Number,
+      required: true,
+    },
   },
-  totalPrice: { type: Number, required: false },
-  estimatedDuration: { type: Number, required: false },
-  currentStep: { type: Number, default: 1 }, // Track the current step
-  totalSteps: { type: Number, required: true }, // Total number of steps
-});
+  {
+    timestamps: true,
+  }
+);
 
+// Middleware to calculate total price and duration
 serviceSchema.pre("save", async function (next) {
   try {
-    // Calculate total price and estimated duration
     let totalPrice = 0;
     let totalDuration = 0;
 
@@ -40,9 +66,7 @@ serviceSchema.pre("save", async function (next) {
 
     next();
   } catch (error) {
-    next(
-      new ApiError("Error checking domain existence or calculating totals", 500)
-    );
+    next(new ApiError("Error calculating totals", 500));
   }
 });
 

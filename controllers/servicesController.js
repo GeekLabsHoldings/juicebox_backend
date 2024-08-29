@@ -6,24 +6,33 @@ const User = require("../models/userModel");
 const ApiError = require("../utils/apiError");
 const checkDomainExists = require("../services/domainService");
 
-// Save a new service as draft
-const saveAsDraft = catchError(
+// Save a new service as in-progress
+const inProgressService = catchError(
   asyncHandler(async (req, res) => {
     const { userId, serviceData } = req.body;
 
     // Ensure serviceData contains steps
     const { options } = serviceData;
-    const totalSteps = serviceData.totalSteps || 1;  // Make sure to handle totalSteps
+    const totalSteps = serviceData.totalSteps || 1; // Make sure to handle totalSteps
 
     // Set currentStep based on options length or any other desired logic
-    const currentStep = options.length > 0 ? options.length : 1; 
+    let currentStep = options.length;
+
+    // Check if currentStep should be set to totalSteps if the process is complete
+    if (currentStep >= totalSteps) {
+      currentStep = totalSteps;
+      serviceData.status = "completed"; // Mark as completed if it's the last step
+    } else {
+      serviceData.status = "in-progress"; // Otherwise, it's still a in-progress
+    }
 
     const service = new Service({
       ...serviceData,
       userId,
-      status: "draft",
+      serviceId: serviceData._id,
+      status: serviceData.status,
       totalSteps,
-      currentStep,  // Ensure to reflect the desired logic
+      currentStep,
     });
 
     await service.save();
@@ -32,29 +41,60 @@ const saveAsDraft = catchError(
   })
 );
 
-// Continue to the next step
+// Add other options (steps) to service
 const continueService = catchError(
   asyncHandler(async (req, res) => {
     const { serviceId, updates } = req.body;
 
+    // Fetch the service by ID
     const service = await Service.findById(serviceId);
 
     if (!service) {
       throw new ApiError("Service not found", 404);
     }
 
-    // Apply updates to the service
-    Object.assign(service, updates);
-
-    if (service.currentStep < service.totalSteps) {
-      service.currentStep += 1;
-      service.status = "in-progress";
-    } else {
-      service.status = "completed"; // Optional: Update status to completed when all steps are done
+    // If the service is already completed
+    if (service.currentStep >= service.totalSteps) {
+      return res
+        .status(400)
+        .send({ success: false, message: "Service is already completed." });
     }
 
-    await service.save();
+    // Check if the updates include new options
+    if (updates.options !== undefined) {
+      // Append new options to the existing ones
+      service.options = [...service.options, ...updates.options];
+      // Set currentStep based on the length of the updated options
+      service.currentStep = service.options.length;
+    }
 
+    // Check if the updates include a specific currentStep change
+    if (updates.currentStep !== undefined) {
+      if (updates.currentStep > service.totalSteps || updates.currentStep < 1) {
+        return res
+          .status(400)
+          .send({ success: false, message: "Invalid current step provided." });
+      }
+      service.currentStep = updates.currentStep;
+    }
+
+    // Ensure currentStep does not exceed totalSteps
+    if (service.currentStep > service.totalSteps) {
+      service.currentStep = service.totalSteps;
+    }
+
+    // Check if the service process is complete
+    if (service.currentStep >= service.totalSteps) {
+      service.currentStep = service.totalSteps; // Ensure currentStep does not exceed totalSteps
+      service.status = "completed"; // Mark as completed if all steps are done
+    } else {
+      service.status = "in-progress"; // Update status if still in progress
+    }
+
+    // Save the updated service
+    await service.save(); // Use save() to ensure proper handling of validation and pre-save hooks
+
+    // Send response with updated service
     res.status(200).send({ success: true, service });
   })
 );
@@ -94,8 +134,8 @@ const buyService = catchError(
       throw new ApiError("Service or User not found", 404);
     }
 
-    if (service.status !== "in-progress") {
-      throw new ApiError("Service must be in progress to purchase", 400);
+    if (service.status !== "completed") {
+      throw new ApiError("Service must be completed to purchase", 400);
     }
 
     let paymentIntent;
@@ -170,7 +210,11 @@ const validateDomain = catchError(
       const result = await checkDomainExists(domain);
 
       if (result.available) {
-        res.status(200).send({ success: true, message: "Domain is available" });
+        res.status(200).send({
+          success: true,
+          message: result.message,
+          prices: result.prices,
+        });
       } else {
         res.status(200).send({
           success: false,
@@ -191,7 +235,7 @@ const validateDomain = catchError(
 
 module.exports = {
   buyService,
-  saveAsDraft,
+  inProgressService,
   continueService,
   cancelService,
   linkCard,

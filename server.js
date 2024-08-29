@@ -1,10 +1,9 @@
 const express = require("express");
-require('dotenv').config({ path: "./config/.env" });
 const morgan = require("morgan");
 const cors = require("cors");
 const cloudinary = require("cloudinary").v2;
 const compression = require("compression");
-const cookieSession = require("cookie-session");
+const session = require('express-session');
 const bodyParser = require("body-parser");
 const cookieParser = require("cookie-parser");
 const passport = require("passport");
@@ -18,6 +17,7 @@ const dbConnection = require("./config/database");
 // Routes
 const mountRoutes = require("./routes");
 
+require('dotenv').config({ path: "./config/.env" });
 require("./config/passport");
 
 cloudinary.config({
@@ -46,13 +46,14 @@ app.options("*", cors());
 // Compress all responses
 app.use(compression());
 
-// Initialize cookie-session
-app.use(cookieSession({
-  name: 'session',
+// Initialize session middleware
+app.use(session({
   secret: process.env.COOKIE_SESSION_SECRET,
-  maxAge: 24 * 60 * 60 * 1000,
-  secure: process.env.NODE_ENV === 'production' // Only send cookies over HTTPS in production
+  resave: false,
+  saveUninitialized: false, // Consider false if you don't want to save uninitialized sessions
+  cookie: { secure: process.env.NODE_ENV === 'production' } // Adjust based on your environment
 }));
+
 
 // Initialize Passport and session
 app.use(passport.initialize());
@@ -68,6 +69,14 @@ app.use(helmet());
 
 // Middleware to sanitize user input
 app.use(mongoSanitize());
+
+// Welcome route
+app.get("/", (req, res) => {
+  res.status(200).send({
+    success: true,
+    message: "Welcome to the API. It is up and running!"
+  });
+});
 
 // Mount Routes
 mountRoutes(app);

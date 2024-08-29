@@ -46,11 +46,9 @@ exports.signUpController = catchError(
       verifyEmailTemplate(token)
     );
 
-    res
-      .status(201)
-      .json({
-        message: "User created successfully! Please verify your email.",
-      });
+    res.status(201).json({
+      message: "User created successfully! Please verify your email.",
+    });
   })
 );
 
@@ -71,23 +69,24 @@ exports.signInController = catchError(
     // 2- Generate token
     const token = createToken(user._id);
 
-    res.status(200).json({ message: "Login successful", user, token });
+    res.status(200).json({ message: "Login successful", token });
   })
 );
 
 exports.verifyEmailController = catchError(
   asyncHandler(async (req, res, next) => {
     const { token } = req.params;
-
-    const decoded = jwt.verify(token, process.env.JWT_SECRET_KEY);
-
-    const user = await User.findOne({ email: decoded.email });
-    if (!user) return next(new ApiError("User not found", 404));
-
-    user.verifyEmail = true;
-    await user.save();
-
-    res.status(200).json({ message: "Email verified successfully!" });
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET_KEY);
+      const user = await User.findOne({ email: decoded.email });
+      if (!user) return next(new ApiError("User not found", 404));
+      user.verifyEmail = true;
+      await user.save();
+      res.status(200).json({ message: "Email verified successfully!" });
+    } catch (err) {
+      console.error("Email verification error:", err);
+      return next(new ApiError("Invalid or expired token", 400));
+    }
   })
 );
 
@@ -153,7 +152,18 @@ exports.verifyPassResetCode = asyncHandler(async (req, res, next) => {
     passwordResetCode: hashedResetCode,
     passwordResetExpires: { $gt: Date.now() },
   });
+
   if (!user) {
+    // Invalidate the reset code if it's expired or invalid
+    await User.findOneAndUpdate(
+      { passwordResetCode: hashedResetCode },
+      {
+        passwordResetCode: undefined,
+        passwordResetExpires: undefined,
+        passwordResetVerified: undefined,
+      }
+    );
+
     return next(new ApiError("Reset code invalid or expired"));
   }
 
@@ -170,27 +180,31 @@ exports.verifyPassResetCode = asyncHandler(async (req, res, next) => {
 // @route   POST /api/v1/auth/resetPassword
 // @access  Public
 exports.resetPassword = asyncHandler(async (req, res, next) => {
-  // 1) Get user based on email
-  const user = await User.findOne({ email: req.body.email });
+  // 1) Find the user and update the password in one step
+  const user = await User.findOneAndUpdate(
+    { email: req.body.email, passwordResetVerified: true },
+    {
+      password: await bcrypt.hash(req.body.newPassword, 12),
+      passwordResetCode: undefined,
+      passwordResetExpires: undefined,
+      passwordResetVerified: undefined,
+      passwordChangedAt: Date.now(), // Invalidate existing tokens
+    },
+    { new: true } // Return the updated user object
+  );
+
+  // 2) If no user is found, return an error
   if (!user) {
-    return next(
-      new ApiError(`There is no user with email ${req.body.email}`, 404)
-    );
+    return next(new ApiError("Reset code not verified or user not found", 400));
   }
 
-  // 2) Check if reset code verified
-  if (!user.passwordResetVerified) {
-    return next(new ApiError("Reset code not verified", 400));
-  }
-
-  user.password = req.body.newPassword;
-  user.passwordResetCode = undefined;
-  user.passwordResetExpires = undefined;
-  user.passwordResetVerified = undefined;
-
-  await user.save();
-
-  // 3) if everything is ok, generate token
+  // 3) Generate a new token for the user
   const token = createToken(user._id);
-  res.status(200).json({ token });
+
+  // 4) Send success response with the new token
+  res.status(200).json({
+    status: "success",
+    message: "Password reset successfully",
+    token,
+  });
 });

@@ -1,7 +1,7 @@
 const express = require("express");
 const {
   buyService,
-  saveAsDraft,
+  inProgressService,
   continueService,
   cancelService,
   linkCard,
@@ -19,7 +19,7 @@ router.use(authService.protect);
 router.use(authService.allowedTo("user"));
 
 router.post("/purchase", buyService);
-router.post("/save-draft", saveAsDraft);
+router.post("/in-progress", inProgressService);
 router.post("/continue", continueService);
 router.post("/cancel", cancelService);
 router.post("/link-card", linkCard);
