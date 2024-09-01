@@ -70,7 +70,8 @@ router.post(
 // Success route
 router.get("/success", (req, res) => {
   res.json({
-    message: "User Authentication successful",
+    message: "User logged in successfully!",
+    password: "MyPassword$1",
     token: req.query.token,
     user: req.user,
   });

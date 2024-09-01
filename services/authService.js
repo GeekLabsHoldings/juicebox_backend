@@ -2,7 +2,7 @@ const jwt = require("jsonwebtoken");
 const asyncHandler = require("express-async-handler");
 const ApiError = require("../utils/apiError");
 const User = require("../models/userModel");
-const { catchError } = require("../middlewares/cacheMiddleware");
+const { catchError } = require("../middlewares/catchErrorMiddleware");
 
 // @desc   make sure the user is logged in
 exports.protect = asyncHandler(async (req, res, next) => {

@@ -1,7 +1,7 @@
 const asyncHandler = require('express-async-handler');
 const ApiError = require('./apiError');
 const ApiFeatures = require('./apiFeatures');
-const { catchError } = require('../middlewares/cacheMiddleware')
+const { catchError } = require('../middlewares/catchErrorMiddleware')
 
 exports.deleteOne = (Model) =>
   catchError(asyncHandler(async (req, res, next) => {

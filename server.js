@@ -1,15 +1,21 @@
+const path = require('path');
+
 const express = require("express");
+const dotenv = require('dotenv');
 const morgan = require("morgan");
 const cors = require("cors");
 const cloudinary = require("cloudinary").v2;
 const compression = require("compression");
-const session = require('express-session');
+const session = require("express-session");
 const bodyParser = require("body-parser");
 const cookieParser = require("cookie-parser");
 const passport = require("passport");
 const helmet = require("helmet");
-const mongoSanitize = require("express-mongo-sanitize");
+const hpp = require('hpp');
+dotenv.config({ path: "./config/.env" });
 
+const mongoSanitize = require("express-mongo-sanitize");
+const { stripeWebhook } = require("./services/paymentService");
 const ApiError = require("./utils/apiError");
 const globalError = require("./middlewares/errorMiddleware");
 const dbConnection = require("./config/database");
@@ -17,7 +23,7 @@ const dbConnection = require("./config/database");
 // Routes
 const mountRoutes = require("./routes");
 
-require('dotenv').config({ path: "./config/.env" });
+// Passport
 require("./config/passport");
 
 cloudinary.config({
@@ -46,14 +52,22 @@ app.options("*", cors());
 // Compress all responses
 app.use(compression());
 
-// Initialize session middleware
-app.use(session({
-  secret: process.env.COOKIE_SESSION_SECRET,
-  resave: false,
-  saveUninitialized: false, // Consider false if you don't want to save uninitialized sessions
-  cookie: { secure: process.env.NODE_ENV === 'production' } // Adjust based on your environment
-}));
+// Checkout webhook
+app.post(
+  "/stripe-webhook",
+  express.raw({ type: "application/json" }),
+  stripeWebhook
+);
 
+// Initialize session middleware
+app.use(
+  session({
+    secret: process.env.COOKIE_SESSION_SECRET,
+    resave: false,
+    saveUninitialized: false, // Consider false if you don't want to save uninitialized sessions
+    cookie: { secure: process.env.NODE_ENV === "production" }, // Adjust based on your environment
+  })
+);
 
 // Initialize Passport and session
 app.use(passport.initialize());
@@ -67,6 +81,8 @@ if (process.env.NODE_ENV === "development") {
 // Middleware to protect against HTTP Parameter Pollution attacks
 app.use(helmet());
 
+app.use(hpp()); // <- THIS IS THE NEW LINE
+
 // Middleware to sanitize user input
 app.use(mongoSanitize());
 
@@ -74,7 +90,7 @@ app.use(mongoSanitize());
 app.get("/", (req, res) => {
   res.status(200).send({
     success: true,
-    message: "Welcome to the API. It is up and running!"
+    message: "Welcome to the API. It is up and running!",
   });
 });
 

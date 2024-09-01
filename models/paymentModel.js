@@ -6,55 +6,32 @@ const paymentSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
-      index: true, // Index for user-based lookups
+      index: true,
     },
     serviceId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Service",
       required: true,
-      index: true, // Index for service-based lookups
+      index: true,
     },
-    paymentDate: {
-      type: Date,
-      default: Date.now,
-      index: true, // Index payment date for chronological queries
+    amount: {
+      type: Number,
+      required: true,
     },
-    paymentMethod: {
-      cardType: {
-        type: String,
-        enum: ["visa", "stripe"],
-        index: true, // Index for filtering by card type
-      },
-      cardNumberLast4: {
-        type: String,
-        trim: true,
-        sparse: true, // Allow nulls while indexing
-      },
-      token: {
-        type: String,
-        trim: true,
-      },
-      expirationDate: {
-        type: String,
-        trim: true,
-      },
-      isDefault: {
-        type: Boolean,
-        default: false,
-        index: true, // Index for quick lookup of default payment method
-      },
-    },
-    transactionId: {
+    currency: {
       type: String,
-      required: [true, "Transaction ID is required"],
-      unique: true,
-      trim: true,
+      default: "usd",
     },
     status: {
       type: String,
       enum: ["pending", "completed", "failed"],
       default: "pending",
-      index: true, // Index for status-based queries
+      index: true,
+    },
+    stripePaymentIntentId: {
+      type: String,
+      required: true,
+      index: true,
     },
   },
   {
@@ -63,5 +40,6 @@ const paymentSchema = new mongoose.Schema(
 );
 
 const Payment = mongoose.model("Payment", paymentSchema);
+
 
 module.exports = Payment;

@@ -26,7 +26,7 @@ const serviceSchema = new mongoose.Schema(
     options: [optionSchema],
     status: {
       type: String,
-      enum: ["in-progress", "purchased", "completed"],
+      enum: ["in-progress", "purchased", "completed", "call-sales"],
       default: "in-progress",
       index: true, // Index service status for quick filtering
     },
@@ -43,6 +43,15 @@ const serviceSchema = new mongoose.Schema(
     totalSteps: {
       type: Number,
       required: true,
+    },
+    paymentStatus: {
+      type: String,
+      enum: ["pending", "paid", "failed"],
+      default: "pending",
+    },
+    stripePaymentId: {
+      type: String,
+      index: true,  // Index for quick lookups
     },
   },
   {

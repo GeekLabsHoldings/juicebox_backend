@@ -4,7 +4,7 @@ const jwt = require("jsonwebtoken");
 const ApiError = require("../utils/apiError");
 const User = require("../models/userModel");
 const asyncHandler = require("express-async-handler");
-const { catchError } = require("../middlewares/cacheMiddleware");
+const { catchError } = require("../middlewares/catchErrorMiddleware");
 const { sendEmail } = require("../utils/sendEmail");
 const { verifyEmailTemplate } = require("../template/verifyEmail");
 const { passwordResetTemplate } = require("../template/passwordReset");
@@ -19,12 +19,13 @@ exports.signUpController = catchError(
     // Validate and format phone number
     const formattedPhoneNumber = formatPhoneNumber(ISD, phoneNumber);
 
+    const fullName = firstName + lastName;
+
     const existingUser = await User.findOne({ email });
     if (existingUser) return next(new ApiError("Email already exists", 400));
 
     const newUser = new User({
-      firstName,
-      lastName,
+      name: fullName,
       email,
       password,
       ISD,
@@ -152,18 +153,7 @@ exports.verifyPassResetCode = asyncHandler(async (req, res, next) => {
     passwordResetCode: hashedResetCode,
     passwordResetExpires: { $gt: Date.now() },
   });
-
   if (!user) {
-    // Invalidate the reset code if it's expired or invalid
-    await User.findOneAndUpdate(
-      { passwordResetCode: hashedResetCode },
-      {
-        passwordResetCode: undefined,
-        passwordResetExpires: undefined,
-        passwordResetVerified: undefined,
-      }
-    );
-
     return next(new ApiError("Reset code invalid or expired"));
   }
 
@@ -180,28 +170,28 @@ exports.verifyPassResetCode = asyncHandler(async (req, res, next) => {
 // @route   POST /api/v1/auth/resetPassword
 // @access  Public
 exports.resetPassword = asyncHandler(async (req, res, next) => {
-  // 1) Find the user and update the password in one step
-  const user = await User.findOneAndUpdate(
-    { email: req.body.email, passwordResetVerified: true },
-    {
-      password: await bcrypt.hash(req.body.newPassword, 12),
-      passwordResetCode: undefined,
-      passwordResetExpires: undefined,
-      passwordResetVerified: undefined,
-      passwordChangedAt: Date.now(), // Invalidate existing tokens
-    },
-    { new: true } // Return the updated user object
-  );
-
-  // 2) If no user is found, return an error
+  // 1) Get user based on email
+  const user = await User.findOne({ email: req.body.email });
   if (!user) {
-    return next(new ApiError("Reset code not verified or user not found", 400));
+    return next(
+      new ApiError(`There is no user with email ${req.body.email}`, 404)
+    );
   }
 
-  // 3) Generate a new token for the user
-  const token = createToken(user._id);
+  // 2) Check if reset code verified
+  if (!user.passwordResetVerified) {
+    return next(new ApiError("Reset code not verified", 400));
+  }
 
-  // 4) Send success response with the new token
+  user.password = req.body.newPassword;
+  user.passwordResetCode = undefined;
+  user.passwordResetExpires = undefined;
+  user.passwordResetVerified = undefined;
+
+  await user.save();
+
+  // 3) if everything is ok, generate token
+  const token = createToken(user._id);
   res.status(200).json({
     status: "success",
     message: "Password reset successfully",

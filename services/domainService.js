@@ -15,6 +15,9 @@ const client = new Route53DomainsClient({
 
 const supportedTLDs = ["com", "net", "org", "info", "biz", "us", "co", "io"];
 
+// In-memory cache for TLD prices
+const tldPriceCache = {};
+
 function getTLD(domain) {
   const domainParts = domain.split(".");
   return domainParts[domainParts.length - 1];
@@ -25,14 +28,26 @@ function isSupportedTLD(tld) {
 }
 
 async function getDomainPrice(tld) {
+  // Check if the price is already cached
+  if (tldPriceCache[tld]) {
+    console.log(`Using cached price for .${tld}`);
+    return tldPriceCache[tld];
+  }
+
+  // If not cached, fetch the price from AWS
   try {
     const pricesCommand = new ListPricesCommand({ Tld: tld });
     const pricesResponse = await client.send(pricesCommand);
     const priceInfo = pricesResponse.Prices[0];
-    return {
+
+    // Store the fetched price in the cache
+    tldPriceCache[tld] = {
       registrationPrice: priceInfo.RegistrationPrice,
       renewalPrice: priceInfo.RenewalPrice,
     };
+
+    console.log(`Fetched and cached price for .${tld}`);
+    return tldPriceCache[tld];
   } catch (error) {
     console.error(`Error fetching prices for .${tld}:`, error);
     throw new Error(`Could not fetch price for .${tld} domain.`);

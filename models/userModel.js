@@ -1,21 +1,15 @@
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
+const cron = require('node-cron');
 
 const userSchema = new mongoose.Schema(
   {
-    firstName: {
+    name: {
       type: String,
-      minlength: [2, "First name must be at least 2 characters long"],
-      maxlength: [50, "First name must be less than 50 characters long"],
+      minlength: [2, "Name must be at least 2 characters long"],
+      maxlength: [50, "Name must be less than 50 characters long"],
       trim: true,
       index: true, // Indexing first name for faster lookups
-    },
-    lastName: {
-      type: String,
-      minlength: [2, "Last name must be at least 2 characters long"],
-      maxlength: [50, "Last name must be less than 50 characters long"],
-      trim: true,
-      index: true, // Indexing last name
     },
     email: {
       type: String,
@@ -27,8 +21,8 @@ const userSchema = new mongoose.Schema(
     },
     password: {
       type: String,
+      required: true,
       minlength: [8, "Password must be at least 8 characters long"],
-      select: false, // Prevent returning password in queries by default
     },
     phoneNumber: {
       type: String,
@@ -106,6 +100,13 @@ const userSchema = new mongoose.Schema(
       default: false,
       index: true, // Index to quickly find verified/unverified users
     },
+    linkedCards: [{
+      stripeCardId: { type: String, index: true },  // Store Stripe Card ID
+      brand: { type: String },  // e.g., Visa, MasterCard
+      last4: { type: String },  // Last 4 digits of the card number
+      expMonth: { type: Number },  // Expiration month
+      expYear: { type: Number },  // Expiration year
+    }],
     googleId: {
       type: String,
       index: true, // Indexing for quick lookup with Google auth
@@ -113,18 +114,6 @@ const userSchema = new mongoose.Schema(
     appleId: {
       type: String,
       index: true, // Indexing for quick lookup with Apple auth
-    },
-    stripeCustomerId: {
-      type: String,
-      index: true, // Indexing for quick lookup with Stripe integration
-    },
-    paymentMethod: {
-      cardType: {
-        type: String,
-        enum: ["visa", "stripe"],
-        index: true, // Index for filtering by card type
-      },
-      token: String,
     },
   },
   {
@@ -137,6 +126,22 @@ userSchema.pre("save", async function (next) {
   if (!this.isModified("password")) return next();
   this.password = await bcrypt.hash(this.password, 12);
   next();
+});
+
+cron.schedule("*/1 * * * *", async () => {
+  const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
+
+  try {
+    const result = await User.deleteMany({
+      verifyEmail: false,
+      createdAt: { $lte: thirtyMinutesAgo },
+    });
+    if (result.deletedCount > 0) {
+      console.log(`Removed ${result.deletedCount} unverified users.`);
+    }
+  } catch (error) {
+    console.error("Error removing unverified users:", error);
+  }
 });
 
 const User = mongoose.model("User", userSchema);
