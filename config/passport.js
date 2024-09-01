@@ -2,6 +2,7 @@ const passport = require("passport");
 const GoogleStrategy = require("passport-google-oauth20").Strategy;
 const AppleStrategy = require("passport-apple");
 const User = require("../models/userModel");
+const capitalizeFirstLetter = require("../helpers/capitalizeFirstLetter");
 
 // Configure Google Strategy
 passport.use(
@@ -64,7 +65,12 @@ passport.use(
           return done(null, user);
         }
 
-        const fullname = profile.name.firstName + " " + profile.name.lastName;
+        const formattedFirstName = capitalizeFirstLetter(
+          profile.name.firstName
+        );
+        const formattedLastName = capitalizeFirstLetter(profile.name.lastName);
+
+        const fullname = `${formattedFirstName} ${formattedLastName}`;
 
         // Create a new user if not found
         const newUser = new User({

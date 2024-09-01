@@ -10,19 +10,25 @@ const { verifyEmailTemplate } = require("../template/verifyEmail");
 const { passwordResetTemplate } = require("../template/passwordReset");
 const createToken = require("../utils/createToken");
 const { formatPhoneNumber } = require("../helpers/phoneNumber");
+const capitalizeFirstLetter = require("../helpers/capitalizeFirstLetter");
 
 exports.signUpController = catchError(
   asyncHandler(async (req, res, next) => {
     const { firstName, lastName, email, password, ISD, phoneNumber, DOB } =
       req.body;
 
+    const existingUser = await User.findOne({ email });
+    if (existingUser) return next(new ApiError("Email already exists", 400));
+    
     // Validate and format phone number
     const formattedPhoneNumber = formatPhoneNumber(ISD, phoneNumber);
 
-    const fullName = firstName + lastName;
+    // Capitalize firstName and lastName
+    const formattedFirstName = capitalizeFirstLetter(firstName);
+    const formattedLastName = capitalizeFirstLetter(lastName);
 
-    const existingUser = await User.findOne({ email });
-    if (existingUser) return next(new ApiError("Email already exists", 400));
+    // Combine formatted names into fullName
+    const fullName = `${formattedFirstName} ${formattedLastName}`;
 
     const newUser = new User({
       name: fullName,
