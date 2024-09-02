@@ -29,7 +29,7 @@ const inProgressService = catchError(
 
     const service = new Service({
       ...serviceData,
-      userId: req.user ._id,
+      userId: req.user._id,
       serviceId: serviceData._id,
       status: serviceData.status,
       totalSteps,
@@ -63,10 +63,22 @@ const continueService = catchError(
 
     // Check if the updates include new options
     if (updates.options !== undefined) {
+      // Calculate the maximum number of options that can be added
+      const remainingSteps = service.totalSteps - service.options.length;
+
+      // Limit new options to the remaining steps
+      if (updates.options.length > remainingSteps) {
+        updates.options = updates.options.slice(0, remainingSteps);
+      }
+
       // Append new options to the existing ones
       service.options = [...service.options, ...updates.options];
-      // Set currentStep based on the length of the updated options
-      service.currentStep = service.options.length;
+
+      // Update currentStep to the length of the new options, but not more than totalSteps
+      service.currentStep = Math.min(
+        service.options.length,
+        service.totalSteps
+      );
     }
 
     // Check if the updates include a specific currentStep change
@@ -80,9 +92,7 @@ const continueService = catchError(
     }
 
     // Ensure currentStep does not exceed totalSteps
-    if (service.currentStep > service.totalSteps) {
-      service.currentStep = service.totalSteps;
-    }
+    service.currentStep = Math.min(service.currentStep, service.totalSteps);
 
     // Check if the service process is complete
     if (service.currentStep >= service.totalSteps) {
@@ -161,87 +171,128 @@ const cancelService = catchError(
   })
 );
 
-const linkCreditCard = async (req, res) => {
-  try {
-    const user = await User.findById(req.user.id);
+const linkCreditCard = catchError(
+  asyncHandler(async (req, res) => {
+    try {
+      const user = await User.findById(req.user._id);
 
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const { paymentMethodId } = req.body;
+
+      // Attach payment method to the customer
+      const paymentMethod = await stripe.paymentMethods.attach(
+        paymentMethodId,
+        {
+          customer: user.stripeCustomerId,
+        }
+      );
+
+      // Update user's linked cards
+      user.linkedCards.push({
+        stripeCardId: paymentMethod.id,
+      });
+
+      await user.save();
+
+      res
+        .status(200)
+        .json({ message: "Card linked successfully", card: paymentMethod });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: "Error linking card" });
     }
+  })
+);
 
-    const { paymentMethodId } = req.body;
+const purchaseService = catchError(
+  asyncHandler(async (req, res) => {
+    try {
+      const { serviceId, paymentMethodId } = req.body;
 
-    // Attach payment method to the customer
-    const paymentMethod = await stripe.paymentMethods.attach(paymentMethodId, {
-      customer: user.stripeCustomerId,
-    });
+      const service = await Service.findById(serviceId);
 
-    // Update user's linked cards
-    user.linkedCards.push({
-      stripeCardId: paymentMethod.id,
-      brand: paymentMethod.card.brand,
-      last4: paymentMethod.card.last4,
-      expMonth: paymentMethod.card.exp_month,
-      expYear: paymentMethod.card.exp_year,
-    });
+      if (!service) {
+        throw new ApiError("Service not found", 404);
+      }
 
-    await user.save();
+      if (service.status === "in-progress") {
+        return res
+          .status(400)
+          .json({ message: "Service must be completed to purchase" });
+      }
 
-    res.status(200).json({ message: "Card linked successfully", card: paymentMethod });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Error linking card" });
-  }
-};
+      if (service.paymentStatus === "paid" && service.status === "purchased") {
+        return res.status(400).json({ message: "Service already paid for" });
+      }
 
-const purchaseService = asyncHandler(async (req, res) => {
-  try {
-    const { serviceId, paymentMethodId } = req.body;
+      const user = req.user;
 
-    const service = await Service.findById(serviceId);
+      let customerId = user.stripeCustomerId;
 
-    if (!service) {
-      return res.status(404).json({ message: "Service not found" });
+      // Check if user has a Stripe customer ID
+      if (!customerId) {
+        // create a dummy customer ID
+        //customerId = "cus_Qm5lWNPBi5ak4s";
+        
+        // Create a new Stripe customer
+        await stripe.paymentMethods.retrieve(
+          paymentMethodId
+        );
+        const customer = await stripe.customers.create({
+          payment_method: paymentMethodId,
+          email: user.email, // Assuming you have user's email
+          description: `Customer for ${user._id}`,
+          customerId: customer.id
+        });
+
+        // Save the new customer ID to the user
+        user.stripeCustomerId = customer.id;
+        await user.save();
+
+        customerId = user.customerId;
+      }
+
+      // Create a PaymentIntent with the order amount and currency
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: service.totalPrice * 100, // Stripe requires the amount in cents
+        currency: "usd",
+        payment_method: paymentMethodId,
+        customer: customerId,
+        confirm: true, // Automatically confirm the payment
+        // return_url: "https://your-website.com/return-url",
+        automatic_payment_methods: {
+          enabled: true,
+          allow_redirects: "never", // Avoid redirects
+        }
+      });
+
+      // Save the payment details in the Payment model
+      const payment = new Payment({
+        userId: user._id,
+        serviceId: service._id,
+        amount: service.totalPrice,
+        status: "pending",
+        stripePaymentIntentId: paymentIntent.id,
+      });
+
+      await payment.save();
+
+      // Update the service with the payment status
+      service.paymentStatus = "paid";
+      service.stripePaymentId = paymentIntent.id;
+      service.status = "purchased";
+      await service.save();
+
+      res.status(200).json({ message: "Payment successful", paymentIntent });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: "Payment failed", error: error.message });
     }
-
-    if (service.paymentStatus === "paid") {
-      return res.status(400).json({ message: "Service already paid for" });
-    }
-
-    const user = req.user;
-
-    // Create a PaymentIntent with the order amount and currency
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount: service.totalPrice * 100, // Stripe requires the amount in cents
-      currency: "usd",
-      payment_method: paymentMethodId,
-      customer: user.stripeCustomerId,
-      confirm: true,  // Automatically confirm the payment
-    });
-
-    // Save the payment details in the Payment model
-    const payment = new Payment({
-      userId: user._id,
-      serviceId: service._id,
-      amount: service.totalPrice,
-      status: "pending",
-      stripePaymentIntentId: paymentIntent.id,
-    });
-
-    await payment.save();
-
-    // Update the service with the payment status
-    service.paymentStatus = "paid";
-    service.stripePaymentId = paymentIntent.id;
-    service.status = "purchased";
-    await service.save();
-
-    res.status(200).json({ message: "Payment successful", paymentIntent });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Payment failed", error: error.message });
-  }
-});
+  })
+);
 
 const validateDomain = catchError(
   asyncHandler(async (req, res) => {

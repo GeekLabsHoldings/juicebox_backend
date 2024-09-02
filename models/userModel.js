@@ -102,10 +102,6 @@ const userSchema = new mongoose.Schema(
     },
     linkedCards: [{
       stripeCardId: { type: String, index: true },  // Store Stripe Card ID
-      brand: { type: String },  // e.g., Visa, MasterCard
-      last4: { type: String },  // Last 4 digits of the card number
-      expMonth: { type: Number },  // Expiration month
-      expYear: { type: Number },  // Expiration year
     }],
     googleId: {
       type: String,

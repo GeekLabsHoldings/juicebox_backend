@@ -1,17 +1,17 @@
-const path = require('path');
+const path = require("path");
 
 const express = require("express");
-const dotenv = require('dotenv');
+const dotenv = require("dotenv");
 const morgan = require("morgan");
 const cors = require("cors");
 const cloudinary = require("cloudinary").v2;
 const compression = require("compression");
 const session = require("express-session");
-const bodyParser = require("body-parser");
+// const bodyParser = require("body-parser");
 const cookieParser = require("cookie-parser");
 const passport = require("passport");
 const helmet = require("helmet");
-const hpp = require('hpp');
+const hpp = require("hpp");
 dotenv.config({ path: "./config/.env" });
 
 const mongoSanitize = require("express-mongo-sanitize");
@@ -38,13 +38,6 @@ dbConnection();
 // Express app
 const app = express();
 
-// Parse JSON requests and URL-encoded data
-app.use(bodyParser.json()); // For parsing application/json
-app.use(bodyParser.urlencoded({ extended: true })); // For parsing application/x-www-form-urlencoded
-
-// Parse cookies
-app.use(cookieParser()); // For parsing cookies
-
 // Enable other domains to access your application
 app.use(cors());
 app.options("*", cors());
@@ -52,12 +45,18 @@ app.options("*", cors());
 // Compress all responses
 app.use(compression());
 
-// Checkout webhook
+// Stripe webhook route
 app.post(
-  "/stripe-webhook",
+  "/webhook-checkout",
   express.raw({ type: "application/json" }),
   stripeWebhook
 );
+
+// Parse JSON requests and URL-encoded data
+app.use(express.json({ limit: "20kb" }));
+
+// Parse cookies
+app.use(cookieParser()); // For parsing cookies
 
 // Initialize session middleware
 app.use(
