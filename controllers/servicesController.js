@@ -6,6 +6,7 @@ const Payment = require("../models/paymentModel");
 const ApiError = require("../utils/apiError");
 const checkDomainExists = require("../services/domainService");
 const stripe = require("../config/stripe");
+const { retrieveBalance } = require("../helpers/retriveBalance");
 
 // Save a new service as in-progress
 const inProgressService = catchError(
@@ -171,18 +172,22 @@ const cancelService = catchError(
   })
 );
 
+// Link a credit card
 const linkCreditCard = catchError(
   asyncHandler(async (req, res) => {
+    const user = await User.findById(req.user._id);
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const { paymentMethodId } = req.body;
+
+    if (!paymentMethodId) {
+      return res.status(400).json({ message: "Payment method ID is required" });
+    }
+
     try {
-      const user = await User.findById(req.user._id);
-
-      if (!user) {
-        return res.status(404).json({ message: "User not found" });
-      }
-
-      const { paymentMethodId } = req.body;
-
-      // Attach payment method to the customer
       const paymentMethod = await stripe.paymentMethods.attach(
         paymentMethodId,
         {
@@ -190,86 +195,119 @@ const linkCreditCard = catchError(
         }
       );
 
-      // Update user's linked cards
+      // Retrieve the balance and currency
+      const { availableBalance, currency } = await retrieveBalance();
+
+      // Save the balance and currency in the user model
       user.linkedCards.push({
         stripeCardId: paymentMethod.id,
       });
+      user.balance = availableBalance;
+      user.currency = currency;
 
       await user.save();
 
-      res
-        .status(200)
-        .json({ message: "Card linked successfully", card: paymentMethod });
+      res.status(200).json({
+        message: "Card linked successfully",
+        card: paymentMethod,
+      });
     } catch (error) {
-      console.error(error);
-      res.status(500).json({ message: "Error linking card" });
+      console.error("Error linking card:", error);
+      if (error.type === "StripeCardError") {
+        return res
+          .status(400)
+          .json({ message: "Card could not be linked", error: error.message });
+      }
+      return res
+        .status(500)
+        .json({ message: "Internal Server Error", error: error.message });
     }
   })
 );
 
+// Purchase a service
 const purchaseService = catchError(
   asyncHandler(async (req, res) => {
-    try {
-      const { serviceId, paymentMethodId } = req.body;
+    const { serviceId, paymentMethodId } = req.body;
 
-      const service = await Service.findById(serviceId);
+    if (!serviceId || !paymentMethodId) {
+      return res
+        .status(400)
+        .json({ message: "Service ID and Payment method ID are required" });
+    }
 
-      if (!service) {
-        throw new ApiError("Service not found", 404);
-      }
+    const service = await Service.findById(serviceId);
 
-      if (service.status === "in-progress") {
-        return res
-          .status(400)
-          .json({ message: "Service must be completed to purchase" });
-      }
+    if (!service) {
+      throw new ApiError("Service not found", 404);
+    }
 
-      if (service.paymentStatus === "paid" && service.status === "purchased") {
-        return res.status(400).json({ message: "Service already paid for" });
-      }
+    if (service.status !== "completed") {
+      return res.status(400).json({
+        message: "Only completed services can be purchased",
+      });
+    }
 
-      const user = req.user;
+    if (service.paymentStatus === "paid") {
+      return res
+        .status(400)
+        .json({ message: "Service has already been paid for" });
+    }
 
-      let customerId = user.stripeCustomerId;
+    const user = req.user;
 
-      // Check if user has a Stripe customer ID
-      if (!customerId) {
-        // create a dummy customer ID
-        //customerId = "cus_Qm5lWNPBi5ak4s";
-        
-        // Create a new Stripe customer
-        await stripe.paymentMethods.retrieve(
-          paymentMethodId
-        );
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    let customerId = user.stripeCustomerId;
+
+    if (!customerId) {
+      try {
+        // Create a Stripe customer
         const customer = await stripe.customers.create({
-          payment_method: paymentMethodId,
-          email: user.email, // Assuming you have user's email
-          description: `Customer for ${user._id}`,
-          customerId: customer.id
+          email: user.email,
+          name: user.name,
         });
+        customerId = customer.id;
+        user.stripeCustomerId = customerId;
 
-        // Save the new customer ID to the user
-        user.stripeCustomerId = customer.id;
+        // Retrieve the balance and currency
+        const { availableBalance, currency } = await retrieveBalance();
+
+        // Save the balance and currency in the user model
+        user.balance = availableBalance;
+        user.currency = currency;
+
         await user.save();
-
-        customerId = user.customerId;
+      } catch (error) {
+        console.error("Error creating Stripe customer:", error);
+        return res.status(500).json({
+          message: "Failed to create customer in Stripe",
+          error: error.message,
+        });
       }
+    }
 
-      // Create a PaymentIntent with the order amount and currency
+    // Check if the user has a sufficient balance
+    if (user.balance < service.totalPrice) {
+      return res.status(400).json({
+        message: "Insufficient balance to purchase the service",
+      });
+    }
+
+    try {
       const paymentIntent = await stripe.paymentIntents.create({
-        amount: service.totalPrice * 100, // Stripe requires the amount in cents
+        amount: Math.round(service.totalPrice * 100),
         currency: "usd",
         payment_method: paymentMethodId,
         customer: customerId,
-        confirm: true, // Automatically confirm the payment
-        // return_url: "https://your-website.com/return-url",
+        confirm: true,
         automatic_payment_methods: {
           enabled: true,
-          allow_redirects: "never", // Avoid redirects
-        }
+        },
       });
 
-      // Save the payment details in the Payment model
       const payment = new Payment({
         userId: user._id,
         serviceId: service._id,
@@ -280,7 +318,10 @@ const purchaseService = catchError(
 
       await payment.save();
 
-      // Update the service with the payment status
+      // Deduct the amount from the user's balance
+      user.balance -= service.totalPrice;
+      await user.save();
+
       service.paymentStatus = "paid";
       service.stripePaymentId = paymentIntent.id;
       service.status = "purchased";
@@ -288,8 +329,15 @@ const purchaseService = catchError(
 
       res.status(200).json({ message: "Payment successful", paymentIntent });
     } catch (error) {
-      console.error(error);
-      res.status(500).json({ message: "Payment failed", error: error.message });
+      console.error("Error processing payment:", error);
+      if (error.type === "StripeCardError") {
+        return res
+          .status(400)
+          .json({ message: "Payment failed", error: error.message });
+      }
+      return res
+        .status(500)
+        .json({ message: "Internal Server Error", error: error.message });
     }
   })
 );

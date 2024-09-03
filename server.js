@@ -47,7 +47,7 @@ app.use(compression());
 
 // Stripe webhook route
 app.post(
-  "/webhook-checkout",
+  "/stripe-webhook",
   express.raw({ type: "application/json" }),
   stripeWebhook
 );
