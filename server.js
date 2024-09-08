@@ -42,7 +42,13 @@ dbConnection();
 const app = express();
 
 // Cors
-app.use(cors());
+app.use(cors(
+  {
+    origin: process.env.BASE_CLIENT_URL,
+    credentials: true,
+  }
+));
+app.options('*', cors());
 
 // Serve static files
 app.use(express.static(path.join(__dirname, "public")));
