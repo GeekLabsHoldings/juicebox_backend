@@ -4,12 +4,22 @@ const Vacancy = require("../models/vacanciesModel");
 const Career = require("../models/careersModel");
 const ApiError = require("../utils/apiError");
 const capitalizeFirstLetter = require("../helpers/capitalizeFirstLetter");
-const upload = require("../helpers/pdfFilesUploader");
+const fs = require("fs");
+const path = require("path");
 
-// Get all vacancies
+// Utility function to unlink a file
+const unlinkFile = (filePath) => {
+  fs.unlink(filePath, (err) => {
+    if (err) {
+      console.error(`Failed to delete file ${filePath}:`, err);
+    }
+  });
+};
+
+// Get all vacancies 
 const getAllVacancies = catchError(
   asyncHandler(async (req, res) => {
-    const vacancies = await Vacancy.find();
+    const vacancies = await Vacancy.find({ status: { $ne: "closed" } });
     res.status(200).json({
       success: true,
       vacancies,
@@ -33,11 +43,19 @@ const postCareer = catchError(
     // Validate vacancy
     const vacancy = await Vacancy.findById(vacancyId);
     if (!vacancy) {
+      if (req.file && req.file.path) {
+        // Delete the file if it exists
+        unlinkFile(req.file.path);
+      }
       throw new ApiError("Vacancy not found", 404);
     }
 
     // Check if the vacancy is closed
     if (vacancy.status === "closed") {
+      if (req.file && req.file.path) {
+        // Delete the file if it exists
+        unlinkFile(req.file.path);
+      }
       throw new ApiError("Cannot apply for a closed vacancy", 400);
     }
 
@@ -57,12 +75,19 @@ const postCareer = catchError(
       linkedInLink,
     });
 
-    await newCareer.save();
-
-    res.status(200).json({
-      success: true,
-      career: newCareer,
-    });
+    try {
+      await newCareer.save();
+      res.status(200).json({
+        success: true,
+        career: newCareer,
+      });
+    } catch (error) {
+      // If saving the career fails, delete the uploaded CV file if it exists
+      if (req.file && req.file.path) {
+        unlinkFile(req.file.path);
+      }
+      throw new ApiError("Failed to save career entry", 500);
+    }
   })
 );
 

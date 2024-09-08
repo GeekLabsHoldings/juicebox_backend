@@ -60,6 +60,11 @@ const notifyUser = catchError(
       throw new ApiError("Service not found", 404);
     }
 
+    // check this service belons to this user
+    if (!service.userId.equals(user._id)) {
+      throw new ApiError("Service does not belong to this user", 400);
+    }
+
     if (service.status !== "completed") {
       throw new ApiError("Service is not completed", 400);
     }
@@ -68,55 +73,6 @@ const notifyUser = catchError(
       serviceId: service._id,
       seen: false,
     });
-
-    await user.save();
-
-    res.status(200).json({
-      success: true,
-    });
-  })
-);
-
-// seen notification
-const seenNotification = catchError(
-  asyncHandler(async (req, res) => {
-    const { notificationId } = req.body;
-
-    const user = await User.findById(notificationId);
-
-    if (!user) {
-      throw new ApiError("User not found", 404);
-    }
-
-    user.notifications = user.notifications.map((notification) => {
-      if (notification.serviceId === notificationId) {
-        notification.seen = true;
-      }
-      return notification;
-    });
-
-    await user.save();
-
-    res.status(200).json({
-      success: true,
-    });
-  })
-);
-
-// delete notification
-const deleteNotification = catchError(
-  asyncHandler(async (req, res) => {
-    const { notificationId } = req.body;
-
-    const user = await User.findById(notificationId);
-
-    if (!user) {
-      throw new ApiError("User not found", 404);
-    }
-
-    user.notifications = user.notifications.filter(
-      (notification) => notification.serviceId !== notificationId
-    );
 
     await user.save();
 
@@ -312,9 +268,7 @@ module.exports = {
   updateService,
   getAllServicesForUser,
   notifyUser,
-  seenNotification,
   getAllUserNotifications,
-  deleteNotification,
   deleteService,
   deleteUser,
   addNewVacancy,
