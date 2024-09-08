@@ -6,9 +6,11 @@ const morgan = require("morgan");
 const cors = require("cors");
 const cloudinary = require("cloudinary").v2;
 const compression = require("compression");
-const session = require("express-session");
-// const bodyParser = require("body-parser");
-const cookieParser = require("cookie-parser");
+// const session = require("express-session");
+// const MongoStore = require("connect-mongo");
+const bodyParser = require("body-parser");
+const cookieSession = require('cookie-session');
+// const cookieParser = require("cookie-parser");
 const passport = require("passport");
 const helmet = require("helmet");
 const hpp = require("hpp");
@@ -17,14 +19,15 @@ dotenv.config({ path: "./config/.env" });
 const mongoSanitize = require("express-mongo-sanitize");
 const { stripeWebhook } = require("./services/paymentService");
 const ApiError = require("./utils/apiError");
+const User = require("./models/userModel");
 const globalError = require("./middlewares/errorMiddleware");
 const dbConnection = require("./config/database");
 
-// Routes
-const mountRoutes = require("./routes");
-
 // Passport
 require("./config/passport");
+
+// Routes
+const mountRoutes = require("./routes");
 
 cloudinary.config({
   cloud_name: process.env.CLOUD_NAME,
@@ -38,9 +41,11 @@ dbConnection();
 // Express app
 const app = express();
 
-// Enable other domains to access your application
+// Cors
 app.use(cors());
-app.options("*", cors());
+
+// Serve static files
+app.use(express.static(path.join(__dirname, "public")));
 
 // Compress all responses
 app.use(compression());
@@ -52,19 +57,14 @@ app.post(
   stripeWebhook
 );
 
-// Parse JSON requests and URL-encoded data
-app.use(express.json({ limit: "20kb" }));
+app.use(bodyParser.json());
+// app.use(express.json({ limit: "20kb" }));
 
-// Parse cookies
-app.use(cookieParser()); // For parsing cookies
-
-// Initialize session middleware
 app.use(
-  session({
-    secret: process.env.COOKIE_SESSION_SECRET,
-    resave: false,
-    saveUninitialized: false, // Consider false if you don't want to save uninitialized sessions
-    cookie: { secure: process.env.NODE_ENV === "production" }, // Adjust based on your environment
+  cookieSession({
+    // 30 days 24 hours 60 minutes 60 seconds 1000 milliseconds for one second 
+    maxAge: 30 * 24 * 60 * 60 * 1000,
+    keys: [process.env.COOKIE_SESSION_SECRET],
   })
 );
 
@@ -104,8 +104,31 @@ app.all("*", (req, res, next) => {
 app.use(globalError);
 
 const PORT = process.env.PORT || 8000;
-const server = app.listen(PORT, () => {
+const server = app.listen(PORT, async () => {
   console.log(`Server is running on port: ${PORT}`);
+
+  // Check if there is any admin user
+  const adminExists = await User.findOne({ role: "admin" });
+
+  if (!adminExists) {
+    try {
+      // Create an admin user
+      const adminUser = new User({
+        name: "Admin",
+        email: process.env.ADMIN_EMAIL, 
+        password: process.env.ADMIN_PASSWORD,
+        role: "admin",
+        verifyEmail: true,
+      });
+
+      await adminUser.save();
+      console.log("Admin user created successfully.");
+    } catch (error) {
+      console.error("Error creating admin user:", error);
+    }
+  } else {
+    console.log("Admin user already exists.");
+  }
 });
 
 // Handle rejection outside express

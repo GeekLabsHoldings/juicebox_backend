@@ -178,13 +178,13 @@ const linkCreditCard = catchError(
     const user = await User.findById(req.user._id);
 
     if (!user) {
-      return res.status(404).json({ message: "User not found" });
+      throw new ApiError("User not found", 404);
     }
 
     const { paymentMethodId } = req.body;
 
     if (!paymentMethodId) {
-      return res.status(400).json({ message: "Payment method ID is required" });
+      throw new ApiError("Payment method ID is required", 400);
     }
 
     try {
@@ -231,9 +231,7 @@ const purchaseService = catchError(
     const { serviceId, paymentMethodId } = req.body;
 
     if (!serviceId || !paymentMethodId) {
-      return res
-        .status(400)
-        .json({ message: "Service ID and Payment method ID are required" });
+      throw new ApiError("Service ID and payment method ID are required", 400);
     }
 
     const service = await Service.findById(serviceId);
@@ -243,21 +241,17 @@ const purchaseService = catchError(
     }
 
     if (service.status !== "completed") {
-      return res.status(400).json({
-        message: "Only completed services can be purchased",
-      });
+      throw new ApiError("Only completed services can be purchased", 400);
     }
 
     if (service.paymentStatus === "paid") {
-      return res
-        .status(400)
-        .json({ message: "Service has already been paid for" });
+      throw new ApiError("Service is already paid", 400);
     }
 
     const user = req.user;
 
     if (!user) {
-      return res.status(404).json({ message: "User not found" });
+      throw new ApiError("User not found", 404);
     }
 
     let customerId = user.stripeCustomerId;

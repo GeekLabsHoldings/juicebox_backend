@@ -1,5 +1,4 @@
 const express = require("express");
-const passport = require("passport");
 const {
   signUpController,
   signInController,
@@ -7,13 +6,16 @@ const {
   forgotPassword,
   resetPassword,
   verifyPassResetCode,
+  googleLogin,
 } = require("../controllers/authController.js");
+const passport = require("passport");
 const {
   signupValidator,
   loginValidator,
 } = require("../utils/validators/authValidator.js");
 const { verifyEmailWebhook } = require("../services/authService.js");
 const createToken = require("../utils/createToken");
+const validatorMiddleware = require('../middlewares/validationMiddleware.js');
 
 const router = express.Router();
 
@@ -23,6 +25,8 @@ router.get("/verify-email/:token", verifyEmailController);
 router.post("/forgot-password", forgotPassword);
 router.post("/verify-reset-code", verifyPassResetCode);
 router.put("/reset-password", resetPassword);
+
+router.post("/with-google", validatorMiddleware, googleLogin);
 
 router.post("/webhook/verify-email", verifyEmailWebhook);
 
@@ -36,55 +40,28 @@ router.get(
 
 router.get(
   "/google/callback",
-  passport.authenticate("google", { failureRedirect: "/login" }),
+  passport.authenticate("google", {
+    failureRedirect: `${process.env.BASE_CLIENT_URL}/login`,
+  }), // Redirect to the login page on failure
   (req, res) => {
-    try {
-      const token = createToken(req.user._id);
-      res.redirect(`/api/v1/auth/success?token=${token}`);
-    } catch (err) {
-      res
-        .status(500)
-        .json({ message: "Authentication failed", error: err.message });
-    }
+    // Successful authentication, redirect to the frontend app
+    res.redirect(`${process.env.BASE_CLIENT_URL}`); // Replace with your frontend URL
   }
 );
 
-// Apple auth routes
-router.get("/apple", passport.authenticate("apple"));
-
-router.post(
-  "/apple/callback",
-  passport.authenticate("apple", { failureRedirect: "/login" }),
-  (req, res) => {
-    try {
-      const token = createToken(req.user._id);
-      res.redirect(`/api/v1/auth/success?token=${token}`);
-    } catch (err) {
-      res
-        .status(500)
-        .json({ message: "Authentication failed", error: err.message });
-    }
-  }
-);
-
-// Success route
-router.get("/success", (req, res) => {
-  res.json({
-    message: "User logged in successfully!",
-    // password: "MyPassword$1",
-    token: req.query.token,
-    // user: req.user,
-  });
+router.get("/logout", (req, res) => {
+  req.logout();
+  res.redirect(`${process.env.BASE_CLIENT_URL}`);
 });
 
-// Logout route
-router.get("/logout", (req, res) => {
-  req.logout((err) => {
-    if (err) {
-      return next(err);
-    }
-    res.json({ message: "Logged out successfully" });
-  });
+router.get("/user", (req, res) => {
+  if (req.user) {
+    // Create token
+    const token = createToken(req.user);
+    res.status(200).json({ message: "Login successful", token });
+  } else {
+    res.status(401).json({ message: "Unauthorized" });
+  }
 });
 
 module.exports = router;
