@@ -11,7 +11,7 @@ const { passwordResetTemplate } = require("../template/passwordReset");
 const createToken = require("../utils/createToken");
 const { formatPhoneNumber } = require("../helpers/phoneNumber");
 const capitalizeFirstLetter = require("../helpers/capitalizeFirstLetter");
-const { OAuth2Client } = require("google-auth-library");
+// const { OAuth2Client } = require("google-auth-library");
 
 exports.signUpController = catchError(
   asyncHandler(async (req, res, next) => {
