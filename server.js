@@ -4,7 +4,7 @@ const express = require("express");
 const dotenv = require("dotenv");
 const morgan = require("morgan");
 const cors = require("cors");
-const cloudinary = require("cloudinary").v2;
+// const cloudinary = require("cloudinary").v2;
 const compression = require("compression");
 // const session = require("express-session");
 // const MongoStore = require("connect-mongo");
@@ -29,11 +29,11 @@ require("./config/passport");
 // Routes
 const mountRoutes = require("./routes");
 
-cloudinary.config({
-  cloud_name: process.env.CLOUD_NAME,
-  api_key: process.env.CLOUD_API_KEY,
-  api_secret: process.env.CLOUD_API_SECRET,
-});
+// cloudinary.config({
+//   cloud_name: process.env.CLOUD_NAME,
+//   api_key: process.env.CLOUD_API_KEY,
+//   api_secret: process.env.CLOUD_API_SECRET,
+// });
 
 // Connect with db
 dbConnection();
@@ -50,9 +50,6 @@ app.use(cors(
 ));
 app.options('*', cors());
 
-// Serve static files
-app.use(express.static(path.join(__dirname, "public")));
-
 // Compress all responses
 app.use(compression());
 
@@ -65,6 +62,9 @@ app.post(
 
 app.use(bodyParser.json());
 // app.use(express.json({ limit: "20kb" }));
+
+// Serve static files
+app.use(express.static(path.join(__dirname, "uploads")));
 
 app.use(
   cookieSession({

@@ -1,5 +1,6 @@
-const express = require('express');
-const { upload } = require('../middlewares/uploadImageMiddleware');
+const express = require("express");
+const createMulterStorage = require("../middlewares/multerFileMiddleware");
+// const { upload } = require("../middlewares/uploadImageMiddleware");
 const {
   getUser,
   getLoggedUserData,
@@ -7,22 +8,38 @@ const {
   updateLoggedUserData,
   deleteLoggedUserData,
   seenNotification,
-  deleteNotification
-} = require('../controllers/userController');
-const { updateLoggedUserValidator } = require('../utils/validators/userValidator');
+  deleteNotification,
+  getAllUserNotifications,
+} = require("../controllers/userController");
+const {
+  updateLoggedUserValidator,
+} = require("../utils/validators/userValidator");
 
-const authService = require('../services/authService');
+// Create upload configuration for images
+const uploadImage = createMulterStorage(
+  "avatars",
+  ["image/jpeg", "image/png", ".jpg", ".jpeg", ".png"],
+  2 * 1024 * 1024
+); // 2 MB max size
+
+const authService = require("../services/authService");
 
 const router = express.Router();
 
 router.use(authService.protect);
 router.use(authService.allowedTo("user"));
 
-router.get('/get-me', getLoggedUserData, getUser);
-router.put('/change-my-password', updateLoggedUserPassword);
-router.put('/update-me', upload.single('avatar'), updateLoggedUserValidator, updateLoggedUserData);
-router.delete('/delete-me', deleteLoggedUserData);
+router.get("/get-me", getLoggedUserData, getUser);
+router.put("/change-my-password", updateLoggedUserPassword);
+router.put(
+  "/update-me",
+  uploadImage.single('avatar'),
+  updateLoggedUserValidator,
+  updateLoggedUserData
+);
+router.delete("/delete-me", deleteLoggedUserData);
 router.put("/seen-notification", seenNotification);
 router.delete("/delete-notification", deleteNotification);
+router.get("/get-all-user-notifications", getAllUserNotifications);
 
 module.exports = router;

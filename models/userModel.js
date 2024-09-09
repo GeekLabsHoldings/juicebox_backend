@@ -38,8 +38,12 @@ const userSchema = new mongoose.Schema(
       trim: true,
       sparse: true, // Index but allow nulls or missing values
     },
-    avatar: String,
-    avatarPublicId: String,
+    avatar: {
+      type: String,
+    },
+    avatarPublicId: {
+      type: String,
+    },
     role: {
       type: String,
       enum: ["user", "admin"],

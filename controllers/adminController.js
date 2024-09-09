@@ -30,20 +30,20 @@ const getAllUsers = catchError(
   })
 );
 
-// Get all user notifications
-const getAllUserNotifications = catchError(
-  asyncHandler(async (req, res) => {
-    const { userId } = req.body;
-    const user = await User.findById(userId);
-    if (!user) {
-      throw new ApiError("User not found", 404);
-    }
-    res.status(200).json({
-      success: true,
-      notifications: user.notifications,
-    });
-  })
-);
+// // Get all user notifications
+// const getAllUserNotifications = catchError(
+//   asyncHandler(async (req, res) => {
+//     const { userId } = req.body;
+//     const user = await User.findById(userId);
+//     if (!user) {
+//       throw new ApiError("User not found", 404);
+//     }
+//     res.status(200).json({
+//       success: true,
+//       notifications: user.notifications,
+//     });
+//   })
+// );
 
 // Notification to a user by when a service is completed
 const notifyUser = catchError(
@@ -268,7 +268,7 @@ module.exports = {
   updateService,
   getAllServicesForUser,
   notifyUser,
-  getAllUserNotifications,
+  // getAllUserNotifications,
   deleteService,
   deleteUser,
   addNewVacancy,

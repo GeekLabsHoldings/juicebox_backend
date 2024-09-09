@@ -5,7 +5,7 @@ const {
   updateService,
   getAllServicesForUser,
   notifyUser,
-  getAllUserNotifications,
+  // getAllUserNotifications,
   deleteService,
   deleteUser,
   addNewVacancy,
@@ -28,7 +28,7 @@ router.delete("/delete-service", deleteService);
 router.delete("/delete-user", deleteUser);
 router.put("/update-service", updateService);
 router.get("/get-all-users", getAllUsers);
-router.get("/get-all-user-notifications", getAllUserNotifications);
+// router.get("/get-all-user-notifications", getAllUserNotifications);
 router.post("/notify-user", notifyUser);
 router.get("/get-all-services-for-user", getAllServicesForUser);
 router.post("/add-new-vacancy", addNewVacancy);

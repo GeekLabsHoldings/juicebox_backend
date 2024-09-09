@@ -1,6 +1,6 @@
-// @desc    this class is responsible about api response
+// @desc    this class is responsible for API responses
 class ApiResponse {
-  constructor(statusCode, data, message = "Success") {
+  constructor(statusCode, data, message = 'Success') {
     this.statusCode = statusCode;
     this.data = data;
     this.message = message;

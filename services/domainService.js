@@ -1,17 +1,9 @@
 const {
-  Route53DomainsClient,
   CheckDomainAvailabilityCommand,
   GetDomainSuggestionsCommand,
   ListPricesCommand,
 } = require("@aws-sdk/client-route-53-domains");
-
-const client = new Route53DomainsClient({
-  credentials: {
-    accessKeyId: process.env.ACCESS_KEY_ID,
-    secretAccessKey: process.env.SECRET_ACCESS_KEY,
-  },
-  region: process.env.REGION,
-});
+const { route53 } = require("../config/awsConfig");
 
 const supportedTLDs = new Set([
   "com",
@@ -23,8 +15,9 @@ const supportedTLDs = new Set([
   "co",
   "io",
 ]);
-const tldPriceCache = new Map(); // Use Map for better lookup performance
-const domainAvailabilityCache = new Map(); // Cache domain availability to reduce API calls
+
+const tldPriceCache = new Map();
+const domainAvailabilityCache = new Map();
 
 function getTLD(domain) {
   const domainParts = domain.split(".");
@@ -37,13 +30,13 @@ function isSupportedTLD(tld) {
 
 async function getDomainPrice(tld) {
   if (tldPriceCache.has(tld)) {
-    console.log(`Using cached price for .${tld}`);
+    // console.log(`Using cached price for .${tld}`);
     return tldPriceCache.get(tld);
   }
 
   try {
     const pricesCommand = new ListPricesCommand({ Tld: tld });
-    const pricesResponse = await client.send(pricesCommand);
+    const pricesResponse = await route53.send(pricesCommand);
     const priceInfo = pricesResponse.Prices[0];
 
     const priceData = {
@@ -52,7 +45,7 @@ async function getDomainPrice(tld) {
     };
 
     tldPriceCache.set(tld, priceData);
-    console.log(`Fetched and cached price for .${tld}`);
+    // console.log(`Fetched and cached price for .${tld}`);
     return priceData;
   } catch (error) {
     console.error(`Error fetching prices for .${tld}:`, error);
@@ -76,7 +69,7 @@ async function checkDomainExists(domain) {
     const availabilityCommand = new CheckDomainAvailabilityCommand({
       DomainName: domain,
     });
-    const availabilityResponse = await client.send(availabilityCommand);
+    const availabilityResponse = await route53.send(availabilityCommand);
 
     let result;
 
@@ -93,7 +86,7 @@ async function checkDomainExists(domain) {
         OnlyAvailable: true,
         SuggestionCount: 20,
       });
-      const suggestionsResponse = await client.send(suggestionsCommand);
+      const suggestionsResponse = await route53.send(suggestionsCommand);
 
       const suggestionsWithPrices = await Promise.allSettled(
         (suggestionsResponse.SuggestionsList || []).map(async (suggestion) => {
