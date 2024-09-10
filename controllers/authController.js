@@ -2,6 +2,7 @@ const bcrypt = require("bcryptjs");
 const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
 const ApiError = require("../utils/apiError");
+const ApiResponse = require('../utils/apiResponse');
 const User = require("../models/userModel");
 const asyncHandler = require("express-async-handler");
 const { catchError } = require("../middlewares/catchErrorMiddleware");
@@ -11,7 +12,6 @@ const { passwordResetTemplate } = require("../template/passwordReset");
 const createToken = require("../utils/createToken");
 const { formatPhoneNumber } = require("../helpers/phoneNumber");
 const capitalizeFirstLetter = require("../helpers/capitalizeFirstLetter");
-// const { OAuth2Client } = require("google-auth-library");
 
 exports.signUpController = catchError(
   asyncHandler(async (req, res, next) => {

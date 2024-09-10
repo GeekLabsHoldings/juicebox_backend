@@ -2,11 +2,13 @@ const asyncHandler = require('express-async-handler');
 const bcrypt = require('bcryptjs');
 const createToken = require('../utils/createToken');
 const User = require('../models/userModel');
+const Service = require('../models/serviceModel');
+const Meeting = require('../models/meetingModel');
+const Process = require('../models/serviceProcessModel');
 const ApiError = require('../utils/apiError');
+const ApiResponse = require('../utils/apiResponse');
 const factory = require('../utils/handlersFactory');
 const { catchError } = require('../middlewares/catchErrorMiddleware');
-// const cloudinary = require("cloudinary").v2;
-// const { formatImage } = require("../middlewares/uploadImageMiddleware");
 const { formatPhoneNumber } = require('../helpers/phoneNumber');
 const { DeleteObjectCommand } = require('@aws-sdk/client-s3');
 const { s3 } = require('../config/awsConfig');
@@ -14,7 +16,6 @@ const {
   checkServiceOwnership,
   findNotification,
 } = require('../helpers/notificationHelper');
-const ApiResponse = require('../utils/apiRespones');
 
 // @desc    Get specific user by id
 // @route   GET /api/v1/users/:id
@@ -51,8 +52,7 @@ exports.updateLoggedUserPassword = catchError(
     // 2) Generate token
     const token = createToken(user._id);
 
-    const response = new ApiResponse(200, { token });
-    res.status(response.statusCode).json(response);
+    res.status(200).json(new ApiResponse(200, { token }, 'Password updated'));
   }),
 );
 
@@ -92,48 +92,10 @@ exports.updateLoggedUserData = catchError(async (req, res, next) => {
     runValidators: true,
   });
 
-  const response = new ApiResponse(200, updatedUser);
-  res.status(response.statusCode).json(response);
+  res
+    .status(200)
+    .json(new ApiResponse(200, { user: updatedUser }, 'User updated'));
 });
-
-// exports.updateLoggedUserData = catchError(
-//   asyncHandler(async (req, res, next) => {
-//     // 1. Filter out fields that shouldn't be updated
-//     const newUser = { ...req.body };
-//     delete newUser.password;
-//     delete newUser.role;
-
-//     // Validate and format phone number
-//     if (newUser.ISD && newUser.phoneNumber) {
-//       newUser.phoneNumber = formatPhoneNumber(newUser.ISD, newUser.phoneNumber);
-//     }
-
-//     let updatedUser;
-//     if (req.file) {
-//       const file = formatImage(req.file);
-
-//       // Upload new avatar image
-//       const response = await cloudinary.uploader.upload(file);
-
-//       newUser.avatar = response.secure_url;
-//       newUser.avatarPublicId = response.public_id;
-
-//       // Remove old avatar if it exists
-//       if (req.user.avatarPublicId) {
-//         await cloudinary.uploader.destroy(req.user.avatarPublicId);
-//       }
-//     }
-
-//     // 2. Update the user document
-//     updatedUser = await User.findByIdAndUpdate(req.user._id, newUser, {
-//       new: true, // Return the updated document
-//       runValidators: true, // Validate the update operation against the schema
-//     });
-
-//     // 3. Send the updated user data in the response
-//     res.status(200).json({ data: updatedUser });
-//   })
-// );
 
 // @desc    Deactivate logged user
 // @route   DELETE /api/v1/users/deleteMe
@@ -142,15 +104,14 @@ exports.deleteLoggedUserData = catchError(
   asyncHandler(async (req, res, next) => {
     await User.findByIdAndUpdate(req.user._id, { active: false });
 
-    const response = new ApiResponse(204, null, 'User deactivated');
-    res.status(response.statusCode).json(response);
+    res.status(200).json(new ApiResponse(200, null, 'User deactivated'));
   }),
 );
 
 // seen notification
 exports.seenNotification = catchError(
   asyncHandler(async (req, res, next) => {
-    const { notificationId } = req.body;
+    const { id } = req.params;
     const userId = req.user._id;
 
     await checkServiceOwnership(userId);
@@ -158,35 +119,34 @@ exports.seenNotification = catchError(
     const user = await User.findById(userId);
 
     // Check if it's marked as seen already
-    if (findNotification(user, notificationId)?.seen) {
+    if (findNotification(user.notifications, id)?.seen) {
       return next(new ApiError('Notification already marked as seen', 400));
     }
 
     // Check if notification exists
-    const notification = findNotification(user, notificationId);
+    const notification = findNotification(user.notifications, id);
+    
     if (!notification) {
       return next(new ApiError('Notification not found', 404));
     }
 
     // Find the user and update the notification status
     const updatedData = await User.findOneAndUpdate(
-      { _id: userId, 'notifications._id': notificationId },
+      { _id: userId, 'notifications._id': id },
       { $set: { 'notifications.$.seen': true } },
       { new: true },
     );
 
-    const response = new ApiResponse(200, {
-      message: 'Notification marked as seen',
-      updatedData,
-    });
-    res.status(response.statusCode).json(response);
+    res
+      .status(200)
+      .json(new ApiResponse(200, updatedData, 'Notification marked as seen'));
   }),
 );
 
 // delete notification
 exports.deleteNotification = catchError(
   asyncHandler(async (req, res, next) => {
-    const { notificationId } = req.body;
+    const { id } = req.params;
     const userId = req.user._id;
 
     await checkServiceOwnership(userId);
@@ -194,7 +154,8 @@ exports.deleteNotification = catchError(
     const user = await User.findById(userId);
 
     // Check if notification exists
-    const notification = findNotification(user, notificationId);
+    const notification = findNotification(user.notifications, id);
+
     if (!notification) {
       return next(new ApiError('Notification not found', 404));
     }
@@ -202,15 +163,13 @@ exports.deleteNotification = catchError(
     // Find the user and pull (delete) the notification from the array
     const updatedData = await User.findByIdAndUpdate(
       userId,
-      { $pull: { notifications: { _id: notificationId } } },
+      { $pull: { notifications: { _id: id } } },
       { new: true },
     );
 
-    const response = new ApiResponse(200, {
-      message: 'Notification deleted',
-      updatedData,
-    });
-    res.status(response.statusCode).json(response);
+    res
+      .status(200)
+      .json(new ApiResponse(200, updatedData, 'Notification deleted'));
   }),
 );
 
@@ -218,14 +177,78 @@ exports.deleteNotification = catchError(
 exports.getAllUserNotifications = catchError(
   asyncHandler(async (req, res, next) => {
     const userId = req.user._id;
+
     await checkServiceOwnership(userId);
+
     const user = await User.findById(userId);
     if (!user) {
       return next(new ApiError('User not found', 404));
     }
-    const response = new ApiResponse(200, {
-      notifications: user.notifications,
+
+    res
+      .status(200)
+      .json(new ApiResponse(200, user.notifications, 'Notifications'));
+  }),
+);
+
+// get all services for user
+exports.getAllServicesForUser = catchError(
+  asyncHandler(async (req, res) => {
+    const userId = req.user._id;
+
+    // Find all services for the user
+    const services = await Service.find({ userId });
+
+    // Map to hold promises for fetching process progress for each service
+    const servicesWithProgressPromises = services.map(async (service) => {
+      // Find the associated process for the service
+      const process = await Process.findOne({ serviceId: service._id });
+
+      return {
+        service,
+        totalProgressPercentage: process ? process.totalProgressPercentage : 0,
+      };
     });
-    res.status(response.statusCode).json(response);
+
+    // Resolve all promises
+    const servicesWithProgress = await Promise.all(
+      servicesWithProgressPromises,
+    );
+
+    // Send the response with services and their progress
+    res.status(200).json(new ApiResponse(200, servicesWithProgress, 'All Services for User retrieved'));
+  }),
+);
+
+// Get all meetings when status is accepted for the authenticated user
+exports.getAllMeetingsForUser = catchError(
+  asyncHandler(async (req, res) => {
+    const userId = req.user._id;
+
+    // Find all meetings for the user
+    const meetings = await Meeting.find({
+      userId,
+      status: { $ne: 'accepted' },
+    }).populate('serviceId', 'type'); // Optional: populate serviceId to get service details
+
+    res.status(200).json(new ApiResponse(200, meetings, 'All Meetings for User retrieved'));
+  }),
+);
+
+// get all process for service
+exports.getAllProcessForService = catchError(
+  asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const service = await Service.findById(id);
+    if (!service) {
+      throw new ApiError('Service not found', 404);
+    }
+
+    const process = await Process.findOne({ serviceId: service._id });
+    if (!process) {
+      throw new ApiError('Process not found', 404);
+    }
+
+    res.status(200).json(new ApiResponse(200, process, 'Process retrieved'));
   }),
 );

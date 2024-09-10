@@ -1,6 +1,5 @@
 const express = require("express");
 const createMulterStorage = require("../middlewares/multerFileMiddleware");
-// const { upload } = require("../middlewares/uploadImageMiddleware");
 const {
   getUser,
   getLoggedUserData,
@@ -10,6 +9,9 @@ const {
   seenNotification,
   deleteNotification,
   getAllUserNotifications,
+  getAllServicesForUser,
+  getAllMeetingsForUser,
+  getAllProcessForService,
 } = require("../controllers/userController");
 const {
   updateLoggedUserValidator,
@@ -38,8 +40,11 @@ router.put(
   updateLoggedUserData
 );
 router.delete("/delete-me", deleteLoggedUserData);
-router.put("/seen-notification", seenNotification);
-router.delete("/delete-notification", deleteNotification);
+router.put("/seen-notification/:id", seenNotification);
+router.delete("/delete-notification/:id", deleteNotification);
 router.get("/get-all-user-notifications", getAllUserNotifications);
+router.get("/get-all-services", getAllServicesForUser);
+router.get("/get-all-meetings", getAllMeetingsForUser);
+router.get("/get-process/:id", getAllProcessForService);
 
 module.exports = router;

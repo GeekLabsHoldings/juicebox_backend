@@ -3,7 +3,6 @@ const {
   getAllVacancies,
   postCareer,
 } = require("../controllers/vacanciesController");
-// const upload = require("../helpers/pdfFilesUploader");
 const createMulterStorage = require("../middlewares/multerFileMiddleware");
 const {
   careerValidationRules,

@@ -13,9 +13,9 @@ const checkServiceOwnership = async (userId) => {
 };
 
 // Check if notification exists in user notifications
-const findNotification = (user, notificationId) => {
-  return user.notifications.find((notification) =>
-    notification._id.equals(notificationId)
+const findNotification = (notifications, notificationId) => {
+  return notifications.find((notification) =>
+    notification._id.equals(notificationId),
   );
 };
 

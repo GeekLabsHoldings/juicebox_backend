@@ -3,7 +3,6 @@ const {
   getAllCallSalesServices,
   getAllUsers,
   updateService,
-  getAllServicesForUser,
   notifyUser,
   // getAllUserNotifications,
   deleteService,
@@ -12,7 +11,11 @@ const {
   updateVacancy,
   deleteVacancy,
   getAllCareersForVacancy,
-  // getAllUserCredits,
+  makeProcessService,
+  updateProcessService,
+  createMeeting,
+  updateMeeting,
+  deleteMeeting,
 } = require("../controllers/adminController");
 
 const authService = require("../services/authService");
@@ -24,17 +27,19 @@ router.use(authService.protect);
 router.use(authService.allowedTo("admin"));
 
 router.get("/get-all-call-sales-services", getAllCallSalesServices);
-router.delete("/delete-service", deleteService);
-router.delete("/delete-user", deleteUser);
-router.put("/update-service", updateService);
+router.delete("/delete-service/:id", deleteService);
+router.delete("/delete-user/:id", deleteUser);
+router.put("/update-service/:id", updateService);
+router.patch("/update-process-service/:id", updateProcessService);
+router.post("/make-process-service", makeProcessService);
 router.get("/get-all-users", getAllUsers);
-// router.get("/get-all-user-notifications", getAllUserNotifications);
 router.post("/notify-user", notifyUser);
-router.get("/get-all-services-for-user", getAllServicesForUser);
 router.post("/add-new-vacancy", addNewVacancy);
-router.put("/update-vacancy", updateVacancy);
-router.delete("/delete-vacancy", deleteVacancy);
+router.put("/update-vacancy/:id", updateVacancy);
+router.post("/create-meeting", createMeeting);
+router.put("/update-meeting/:id", updateMeeting);
+router.delete("/delete-meeting/:id", deleteMeeting);
+router.delete("/delete-vacancy/:id", deleteVacancy);
 router.get("/get-all-careers-for-vacancy", getAllCareersForVacancy);
-// router.get("/get-all-user-credits", getAllUserCredits);
 
 module.exports = router;
