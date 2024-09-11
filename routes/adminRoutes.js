@@ -18,6 +18,7 @@ const {
   deleteMeeting,
 } = require("../controllers/adminController");
 const { updateMeetingValidation } = require("../utils/validators/meetingValidator");
+const { vacancyValidationRules } = require('../utils/validators/careerValidator');
 
 const authService = require("../services/authService");
 
@@ -35,7 +36,7 @@ router.patch("/update-process-service/:id", updateProcessService);
 router.post("/make-process-service", makeProcessService);
 router.get("/get-all-users", getAllUsers);
 router.post("/notify-user", notifyUser);
-router.post("/add-new-vacancy", addNewVacancy);
+router.post("/add-new-vacancy", vacancyValidationRules, addNewVacancy);
 router.put("/update-vacancy/:id", updateVacancy);
 router.post("/create-meeting", createMeeting);
 router.put("/update-meeting/:id", updateMeetingValidation, updateMeeting);
