@@ -1,7 +1,7 @@
 const express = require("express");
 const {
   purchaseService,
-  inProgressService,
+  initializeService,
   continueService,
   cancelService,
   linkCreditCard,
@@ -17,7 +17,7 @@ router.use(authService.protect);
 
 router.use(authService.allowedTo("user"));
 
-router.post("/in-progress", inProgressService);
+router.post("/initialize-service", initializeService);
 router.post("/:id/follow-up-service", continueService);
 router.post("/cancel", cancelService);
 router.post("/call-sales", callSales);

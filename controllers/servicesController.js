@@ -19,27 +19,23 @@ const {
 const { withTransaction } = require('../helpers/transactionHelper');
 
 // Save a new service as in-progress
-exports.inProgressService = catchError(
+exports.initializeService = catchError(
   asyncHandler(async (req, res) => {
-    const { serviceData } = req.body;
-    const { options } = serviceData;
-    const totalSteps = serviceData.totalSteps || 1;
-    let currentStep = options.length;
-
-    currentStep = currentStep >= totalSteps ? totalSteps : currentStep;
-    serviceData.status =
-      currentStep >= totalSteps ? 'completed' : 'in-progress';
+    const { type, options, totalSteps } = req.body;
+    const currentStep = options.length;
+    const steps = totalSteps || 1;
+    const status = currentStep >= steps ? 'completed' : 'in-progress';
 
     let service;
 
     await withTransaction(async (session) => {
       service = new Service({
-        ...serviceData,
+        type,
+        ...req.body,
         userId: req.user._id,
-        serviceId: serviceData._id,
-        status: serviceData.status,
-        totalSteps,
-        currentStep,
+        status,
+        totalSteps: steps,
+        currentStep: currentStep >= steps ? steps : currentStep,
       });
       await service.save({ session });
     });
@@ -152,7 +148,7 @@ exports.linkCreditCard = catchError(
       await user.save({ session });
     })
       .then(() => {
-        res.status(200).json(new ApiResponse(200, user.linkedCards, 'Card linked successfully'));
+        res.status(200).json(new ApiResponse(200, user.linkCreditCard, 'Card linked successfully'));
       })
       .catch((error) => {
         const { status, message, details } = handleStripeError(error);
