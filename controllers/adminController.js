@@ -8,7 +8,6 @@ const Process = require('../models/serviceProcessModel');
 const Vacancy = require('../models/vacanciesModel');
 const Career = require('../models/careersModel');
 const Meeting = require('../models/meetingModel');
-const { ObjectId } = require('mongoose').Types;
 const factory = require('../utils/handlersFactory');
 
 // Get all services that are call-sales
@@ -54,6 +53,11 @@ exports.notifyUser = catchError(
 
     if (service.status !== 'completed') {
       throw new ApiError('Service is not completed', 400);
+    }
+
+    // check if user has already been notified for this service
+    if (user.notifications.some((n) => n.serviceId.equals(service._id))) {
+      throw new ApiError('User has already been notified for this service', 400);
     }
 
     user.notifications.push({

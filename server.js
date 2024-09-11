@@ -4,13 +4,9 @@ const express = require("express");
 const dotenv = require("dotenv");
 const morgan = require("morgan");
 const cors = require("cors");
-// const cloudinary = require("cloudinary").v2;
 const compression = require("compression");
-// const session = require("express-session");
-// const MongoStore = require("connect-mongo");
 const bodyParser = require("body-parser");
 const cookieSession = require('cookie-session');
-// const cookieParser = require("cookie-parser");
 const passport = require("passport");
 const helmet = require("helmet");
 const hpp = require("hpp");
@@ -28,12 +24,6 @@ require("./config/passport");
 
 // Routes
 const mountRoutes = require("./routes");
-
-// cloudinary.config({
-//   cloud_name: process.env.CLOUD_NAME,
-//   api_key: process.env.CLOUD_API_KEY,
-//   api_secret: process.env.CLOUD_API_SECRET,
-// });
 
 // Connect with db
 dbConnection();

@@ -252,3 +252,26 @@ exports.getProcessForService = catchError(
     res.status(200).json(new ApiResponse(200, process, 'Process retrieved'));
   }),
 );
+
+// Delete all notifications that have seen is true
+exports.deleteAllSeenNotifications = catchError(
+  asyncHandler(async (req, res) => {
+    const userId = req.user._id;
+    const user = await User.findById(userId);
+    if (!user) {
+      throw new ApiError('User not found', 404);
+    }
+
+    // Remove all seen notifications
+    await user.updateOne({
+      $pull: {
+        notifications: { seen: true }
+      }
+    });
+
+    // Fetch the updated user data to get the latest notifications
+    const updatedUser = await User.findById(userId);
+    
+    res.status(200).json(new ApiResponse(200, updatedUser.notifications, 'All seen notifications deleted'));
+  }),
+)

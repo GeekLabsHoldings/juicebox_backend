@@ -6,9 +6,17 @@ const Payment = require('../models/paymentModel');
 const ApiError = require('../utils/apiError');
 const ApiResponse = require('../utils/apiResponse');
 const checkDomainExists = require('../services/domainService');
-const stripe = require('../config/stripe');
-const { retrieveBalance } = require('../helpers/retriveBalance');
-const handleError = require('../helpers/handleError');
+const { handleStripeError } = require('../helpers/stripeErrorHandler');
+const {
+  attachPaymentMethod,
+  createPaymentIntent,
+} = require('../services/paymentService');
+const {
+  updateUserBalance,
+  checkBalance,
+  updateBalanceInUserModel,
+} = require('../services/balanceService');
+const { withTransaction } = require('../helpers/transactionHelper');
 
 // Save a new service as in-progress
 exports.inProgressService = catchError(
@@ -22,16 +30,19 @@ exports.inProgressService = catchError(
     serviceData.status =
       currentStep >= totalSteps ? 'completed' : 'in-progress';
 
-    const service = new Service({
-      ...serviceData,
-      userId: req.user._id,
-      serviceId: serviceData._id,
-      status: serviceData.status,
-      totalSteps,
-      currentStep,
-    });
+    let service;
 
-    await service.save();
+    await withTransaction(async (session) => {
+      service = new Service({
+        ...serviceData,
+        userId: req.user._id,
+        serviceId: serviceData._id,
+        status: serviceData.status,
+        totalSteps,
+        currentStep,
+      });
+      await service.save({ session });
+    });
 
     res.status(201).json(new ApiResponse(201, service, 'Service created'));
   }),
@@ -40,25 +51,31 @@ exports.inProgressService = catchError(
 // Continue service with new options
 exports.continueService = catchError(
   asyncHandler(async (req, res) => {
-    const { serviceId, updates } = req.body;
-    const service = await Service.findById(serviceId);
+    const { id } = req.params;
+    const updates = req.body;
+    let service;
 
-    if (!service) throw new ApiError('Service not found', 404);
-    if (service.currentStep >= service.totalSteps)
-      return res
-        .status(400)
-        .send({ success: false, message: 'Service is already completed.' });
+    await withTransaction(async (session) => {
+      service = await Service.findById(id).session(session);
 
-    const remainingSteps = service.totalSteps - service.options.length;
-    if (updates.options?.length > remainingSteps)
-      updates.options = updates.options.slice(0, remainingSteps);
+      if (!service) throw new ApiError('Service not found', 404);
+      if (service.currentStep >= service.totalSteps)
+        throw new ApiError('Service is already completed.', 400);
 
-    service.options = [...service.options, ...updates.options];
-    service.currentStep = Math.min(service.options.length, service.totalSteps);
+      const remainingSteps = service.totalSteps - service.options.length;
+      if (updates.options?.length > remainingSteps)
+        updates.options = updates.options.slice(0, remainingSteps);
 
-    service.status =
-      service.currentStep >= service.totalSteps ? 'completed' : 'in-progress';
-    await service.save();
+      service.options = [...service.options, ...updates.options];
+      service.currentStep = Math.min(
+        service.options.length,
+        service.totalSteps,
+      );
+      service.status =
+        service.currentStep >= service.totalSteps ? 'completed' : 'in-progress';
+
+      await service.save({ session });
+    });
 
     res.status(200).json(new ApiResponse(200, service, 'Service updated'));
   }),
@@ -68,35 +85,22 @@ exports.continueService = catchError(
 exports.callSales = catchError(
   asyncHandler(async (req, res) => {
     const { serviceId } = req.body;
+    let service;
 
-    // Find the service by ID
-    const service = await Service.findById(serviceId);
+    await withTransaction(async (session) => {
+      service = await Service.findById(serviceId).session(session);
+      if (!service) throw new ApiError('Service not found', 404);
+      if (service.status !== 'completed')
+        throw new ApiError('Service is not completed', 400);
 
-    if (!service) {
-      throw new ApiError('Service not found', 404);
-    }
+      const user = await User.findById(service.userId).session(session);
+      if (!user) throw new ApiError('User not found', 404);
+      if (!user.phoneNumber)
+        throw new ApiError('Please add your phone number first.', 400);
 
-    // Ensure the service is completed
-    if (service.status !== 'completed') {
-      throw new ApiError('Service is not completed', 400);
-    }
-
-    // Fetch the user associated with the service
-    const user = await User.findById(service.userId);
-
-    if (!user) {
-      throw new ApiError('User not found', 404);
-    }
-
-    // Check if the user has a phone number
-    if (!user.phoneNumber) {
-      throw new ApiError('Please add your phone number first.', 400);
-    }
-
-    // Update the service status to "call-sales"
-    service.status = 'call-sales';
-
-    await service.save();
+      service.status = 'call-sales';
+      await service.save({ session });
+    });
 
     res
       .status(200)
@@ -108,117 +112,119 @@ exports.callSales = catchError(
 exports.cancelService = catchError(
   asyncHandler(async (req, res) => {
     const { serviceId } = req.body;
+    let service;
 
-    const service = await Service.findById(serviceId);
+    await withTransaction(async (session) => {
+      service = await Service.findById(serviceId).session(session);
+      if (!service) throw new ApiError('Service not found', 404);
+      if (service.status === 'purchased')
+        throw new ApiError('Cannot cancel a purchased service', 400);
 
-    if (!service) {
-      throw new ApiError('Service not found', 404);
-    }
-
-    if (service.status === 'purchased') {
-      throw new ApiError('Cannot cancel a purchased service', 400);
-    }
-
-    await Service.findByIdAndDelete(serviceId);
+      await Service.findByIdAndDelete(serviceId).session(session);
+    });
 
     res
       .status(200)
-      .json(new ApiResponse(200, null, 'Service canceled successfully'));
+      .json(new ApiResponse(200, service, 'Service canceled successfully'));
   }),
 );
 
 // Link a credit card
 exports.linkCreditCard = catchError(
   asyncHandler(async (req, res) => {
-    const user = await User.findById(req.user._id);
-    if (!user) throw new ApiError('User not found', 404);
-
     const { paymentMethodId } = req.body;
-    if (!paymentMethodId)
-      throw new ApiError('Payment method ID is required', 400);
+    if (!paymentMethodId) throw new ApiError('Payment method ID is required', 400);
 
-    try {
-      const paymentMethod = await stripe.paymentMethods.attach(
-        paymentMethodId,
-        {
-          customer: user.stripeCustomerId,
-        },
-      );
+    let user;
 
-      const { availableBalance, currency } = await retrieveBalance();
+    await withTransaction(async (session) => {
+      user = await User.findById(req.user._id)
+        .select('stripeCustomerId linkedCards balance currency')
+        .session(session);
+      if (!user) throw new ApiError('User not found', 404);
+
+      const paymentMethod = await attachPaymentMethod(user, paymentMethodId);
+
+      // Update user balance using the utility function
+      await updateBalanceInUserModel(user);
+
       user.linkedCards.push({ stripeCardId: paymentMethod.id });
-      user.balance = availableBalance;
-      user.currency = currency;
-
-      await user.save();
-
-      res
-        .status(200)
-        .json(new ApiResponse(200, user, 'Card linked successfully'));
-    } catch (error) {
-      return handleError(error, res, 'Error linking card');
-    }
-  }),
+      await user.save({ session });
+    })
+      .then(() => {
+        res.status(200).json(new ApiResponse(200, user.linkedCards, 'Card linked successfully'));
+      })
+      .catch((error) => {
+        const { status, message, details } = handleStripeError(error);
+        res.status(status).json({ message, error: details });
+      });
+  })
 );
 
 // Purchase a service
 exports.purchaseService = catchError(
   asyncHandler(async (req, res) => {
     const { serviceId, paymentMethodId } = req.body;
+    if (!serviceId || !paymentMethodId) throw new ApiError('Service ID and payment method ID are required', 400);
 
-    if (!serviceId || !paymentMethodId)
-      throw new ApiError('Service ID and payment method ID are required', 400);
+    let paymentIntent;
 
-    const service = await Service.findById(serviceId);
-    if (!service || service.status !== 'completed')
-      throw new ApiError('Invalid service status', 400);
+    await withTransaction(async (session) => {
+      // Fetch service and user data in parallel
+      const [service, user] = await Promise.all([
+        Service.findById(serviceId).select('totalPrice paymentStatus status').session(session),
+        User.findById(req.user._id).select('stripeCustomerId balance currency').session(session),
+      ]);
 
-    const user = req.user;
-    let customerId = user.stripeCustomerId;
+      if (!service) throw new ApiError('Service not found', 404);
+      if (service.status !== 'completed') throw new ApiError('Only completed services can be purchased', 400);
+      if (service.paymentStatus === 'paid') throw new ApiError('Service is already paid', 400);
 
-    if (!customerId) {
-      const customer = await stripe.customers.create({
-        email: user.email,
-        name: user.name,
-      });
-      customerId = customer.id;
-      user.stripeCustomerId = customerId;
-      const { availableBalance, currency } = await retrieveBalance();
-      user.balance = availableBalance;
-      user.currency = currency;
-      await user.save();
-    }
+      // Update user balance using the utility function
+      await updateBalanceInUserModel(user);
 
-    if (user.balance < service.totalPrice)
-      return res.status(400).json({ message: 'Insufficient balance' });
+      // Check if user has sufficient balance
+      if (!checkBalance(user, service.totalPrice)) {
+        throw new ApiError('Insufficient balance', 400);
+      }
 
-    try {
-      const paymentIntent = await stripe.paymentIntents.create({
-        amount: Math.round(service.totalPrice * 100),
-        currency: 'usd',
-        payment_method: paymentMethodId,
-        customer: customerId,
-        confirm: true,
-      });
+      // Proceed with payment intent creation and saving data
+      try {
+        paymentIntent = await createPaymentIntent(
+          service.totalPrice,
+          user.currency,
+          paymentMethodId,
+          user.stripeCustomerId
+        );
 
-      const payment = new Payment({
-        userId: user._id,
-        serviceId: service._id,
-        amount: service.totalPrice,
-        status: 'pending',
-      });
-      await payment.save();
+        const payment = new Payment({
+          userId: user._id,
+          serviceId: service._id,
+          amount: service.totalPrice,
+          status: 'pending',
+          stripePaymentIntentId: paymentIntent.id,
+        });
+        await payment.save({ session });
 
-      service.paymentStatus = 'paid';
-      await service.save();
+        // Deduct the balance from the user
+        await updateUserBalance(user, service.totalPrice);
 
-      res
-        .status(200)
-        .json(new ApiResponse(200, paymentIntent, 'Payment successful'));
-    } catch (error) {
-      return handleError(error, res, 'Error processing payment');
-    }
-  }),
+        // Update service to reflect payment
+        service.paymentStatus = 'paid';
+        service.stripePaymentId = paymentIntent.id;
+        service.status = 'purchased';
+        await service.save({ session });
+
+        res.status(200).json(new ApiResponse(200, paymentIntent, 'Service purchased successfully'));
+      } catch (error) {
+        throw error; // This will be caught in the transaction and handled by handleStripeError
+      }
+    })
+    .catch((error) => {
+      const { status, message, details } = handleStripeError(error);
+      res.status(status).json({ message, error: details });
+    });
+  })
 );
 
 // Validate domain
@@ -236,7 +242,9 @@ exports.validateDomain = catchError(
       if (result.available) {
         res.status(200).json(new ApiResponse(200, result, 'Domain available'));
       } else {
-        res.status(400).json(new ApiResponse(400, result, 'Domain not available'));
+        res
+          .status(400)
+          .json(new ApiResponse(400, result, 'Domain not available'));
       }
     } catch (error) {
       if (error.message.startsWith('The TLD')) {

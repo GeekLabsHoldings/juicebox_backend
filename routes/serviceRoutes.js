@@ -18,7 +18,7 @@ router.use(authService.protect);
 router.use(authService.allowedTo("user"));
 
 router.post("/in-progress", inProgressService);
-router.post("/continue", continueService);
+router.post("/:id/follow-up-service", continueService);
 router.post("/cancel", cancelService);
 router.post("/call-sales", callSales);
 router.post('/link-card', linkCreditCard);

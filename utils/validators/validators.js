@@ -13,6 +13,7 @@ const checkServiceOwnership = async (userId) => {
   }
 };
 
+// check if date is in the future
 const validateFutureDate = (fieldName) =>
   body(fieldName)
     .isISO8601()
@@ -33,14 +34,30 @@ const checkExists = async (model, id) => {
   }
 };
 
+// validate mongo id
 const validateMongoId = (paramName) =>
   param(paramName)
     .isMongoId()
     .withMessage(`${paramName} must be a valid MongoDB ObjectId`);
+
+
+// check birth date is not in the future
+const checkBirthDate = (fieldName) =>
+  body(fieldName)
+    .isISO8601()
+    .withMessage(`${fieldName} must be a valid date format (ISO 8601)`)
+    .custom((value) => {
+      const inputDate = new Date(value);
+      if (inputDate > new Date()) {
+        throw new ApiError('Date must be in the past', 400);
+      }
+      return true;
+    });
 
 module.exports = {
   checkServiceOwnership,
   validateFutureDate,
   checkExists,
   validateMongoId,
+  checkBirthDate,
 };
