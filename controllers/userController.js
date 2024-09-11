@@ -236,7 +236,7 @@ exports.getAllMeetingsForUser = catchError(
 );
 
 // get all process for service
-exports.getAllProcessForService = catchError(
+exports.getProcessForService = catchError(
   asyncHandler(async (req, res) => {
     const { id } = req.params;
     const service = await Service.findById(id);
