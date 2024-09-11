@@ -2,7 +2,7 @@ const { body, param } = require('express-validator');
 const validatorMiddleware = require('../../middlewares/validationMiddleware');
 
 exports.updateMeetingValidation = [
-  body('meetingStatus')
+  body('status')
     .isIn(['accepted', 'declined', 'completed'])
     .withMessage('Meeting status must be accepted, declined or completed'),
 
