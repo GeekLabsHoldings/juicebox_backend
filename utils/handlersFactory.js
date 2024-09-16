@@ -3,19 +3,27 @@ const ApiError = require('./apiError');
 const ApiResponse = require('./apiResponse');
 const ApiFeatures = require('./apiFeatures');
 const { catchError } = require('../middlewares/catchErrorMiddleware');
+const { withTransaction } = require('../helpers/transactionHelper');
 
 exports.deleteOne = (Model) =>
   catchError(
     asyncHandler(async (req, res, next) => {
       const { id } = req.params;
-      const document = await Model.findByIdAndDelete(id);
 
-      if (!document) {
-        return next(new ApiError(`No document found for this ID: ${id}`, 404));
-      }
+      let document;
 
-      // Trigger "remove" event if necessary
-      document.deleteOne();
+      await withTransaction(async (session) => {
+        document = await Model.findByIdAndDelete(id).session(session);
+
+        if (!document) {
+          return next(
+            new ApiError(`No document found for this ID: ${id}`, 404),
+          );
+        }
+
+        // Trigger "remove" event if necessary
+        document.deleteOne();
+      });
 
       const response = new ApiResponse(
         204,
@@ -29,18 +37,26 @@ exports.deleteOne = (Model) =>
 exports.updateOne = (Model) =>
   catchError(
     asyncHandler(async (req, res, next) => {
-      const document = await Model.findByIdAndUpdate(req.params.id, req.body, {
-        new: true,
+      const { id } = req.params;
+      const updateData = req.body;
+
+      let document;
+
+      await withTransaction(async (session) => {
+        document = await Model.findByIdAndUpdate(id, updateData, {
+          new: true,
+          session,
+        });
+
+        if (!document) {
+          return next(
+            new ApiError(`No document found for this ID: ${id}`, 404),
+          );
+        }
+
+        // Trigger "save" event after update
+        document = await document.save({ session });
       });
-
-      if (!document) {
-        return next(
-          new ApiError(`No document found for this ID: ${req.params.id}`, 404),
-        );
-      }
-
-      // Trigger "save" event after update
-      document.save();
 
       const response = new ApiResponse(
         200,
@@ -54,10 +70,15 @@ exports.updateOne = (Model) =>
 exports.createOne = (Model) =>
   catchError(
     asyncHandler(async (req, res) => {
-      const newDoc = await Model.create(req.body);
+      let newDoc;
+
+      await withTransaction(async (session) => {
+        newDoc = await Model.create([{ ...req.body }], { session });
+      });
+
       const response = new ApiResponse(
         201,
-        newDoc,
+        newDoc[0],
         `${Model.modelName} created successfully`,
       );
       res.status(response.statusCode).json(response);
@@ -68,18 +89,23 @@ exports.getOne = (Model, populationOpt) =>
   catchError(
     asyncHandler(async (req, res, next) => {
       const { id } = req.params;
-      // 1) Build query
-      let query = Model.findById(id);
-      if (populationOpt) {
-        query = query.populate(populationOpt);
-      }
 
-      // 2) Execute query
-      const document = await query;
+      let document;
 
-      if (!document) {
-        return next(new ApiError(`No document found for this ID: ${id}`, 404));
-      }
+      await withTransaction(async (session) => {
+        let query = Model.findById(id).session(session);
+        if (populationOpt) {
+          query = query.populate(populationOpt);
+        }
+
+        document = await query;
+
+        if (!document) {
+          return next(
+            new ApiError(`No document found for this ID: ${id}`, 404),
+          );
+        }
+      });
 
       const response = new ApiResponse(
         200,
@@ -97,18 +123,26 @@ exports.getAll = (Model, searchableFields = []) =>
       if (req.filterObj) {
         filter = req.filterObj;
       }
-      // Build query
-      const documentsCounts = await Model.countDocuments();
-      const apiFeatures = new ApiFeatures(Model.find(filter), req.query)
-        .paginate(documentsCounts)
-        .filter()
-        .search(searchableFields)
-        .limitFields()
-        .sort();
 
-      // Execute query
-      const { mongooseQuery, paginationResult } = apiFeatures;
-      const documents = await mongooseQuery;
+      let documents;
+      let documentsCounts;
+
+      await withTransaction(async (session) => {
+        documentsCounts = await Model.countDocuments().session(session);
+
+        const apiFeatures = new ApiFeatures(
+          Model.find(filter).session(session),
+          req.query,
+        )
+          .paginate(documentsCounts)
+          .filter()
+          .search(searchableFields)
+          .limitFields()
+          .sort();
+
+        const { mongooseQuery, paginationResult } = apiFeatures;
+        documents = await mongooseQuery;
+      });
 
       const response = new ApiResponse(
         200,
