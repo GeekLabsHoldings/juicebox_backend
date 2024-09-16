@@ -123,26 +123,18 @@ exports.getAll = (Model, searchableFields = []) =>
       if (req.filterObj) {
         filter = req.filterObj;
       }
+      // Build query
+      const documentsCounts = await Model.countDocuments();
+      const apiFeatures = new ApiFeatures(Model.find(filter), req.query)
+        .paginate(documentsCounts)
+        .filter()
+        .search(searchableFields)
+        .limitFields()
+        .sort();
 
-      let documents;
-      let documentsCounts;
-
-      await withTransaction(async (session) => {
-        documentsCounts = await Model.countDocuments().session(session);
-
-        const apiFeatures = new ApiFeatures(
-          Model.find(filter).session(session),
-          req.query,
-        )
-          .paginate(documentsCounts)
-          .filter()
-          .search(searchableFields)
-          .limitFields()
-          .sort();
-
-        const { mongooseQuery, paginationResult } = apiFeatures;
-        documents = await mongooseQuery;
-      });
+      // Execute query
+      const { mongooseQuery, paginationResult } = apiFeatures;
+      const documents = await mongooseQuery;
 
       const response = new ApiResponse(
         200,
