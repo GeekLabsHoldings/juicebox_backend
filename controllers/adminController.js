@@ -8,6 +8,7 @@ const Process = require('../models/serviceProcessModel');
 const Vacancy = require('../models/vacanciesModel');
 const Career = require('../models/careersModel');
 const Meeting = require('../models/meetingModel');
+const Blog = require('../models/blogModel');
 const factory = require('../utils/handlersFactory');
 
 // Get all services that are call-sales
@@ -223,6 +224,22 @@ exports.getAllCareersForVacancy = catchError(
   }),
 );
 
+// delete all careers that status is rejected
+exports.deleteAllRejectedCareers = catchError(
+  asyncHandler(async (req, res, next) => {
+
+    const careers = await Career.find({ status: 'rejected' });
+
+    if (careers.length === 0) {
+      return next(new ApiError('No careers found', 404));
+    }
+
+    const result = await Career.deleteMany({ status: 'rejected' });
+
+    res.status(204).json(new ApiResponse(204, result, 'Careers deleted'));
+  }),
+);
+
 // Create a new process service
 exports.makeProcessService = catchError(
   asyncHandler(async (req, res, next) => {
@@ -310,55 +327,20 @@ exports.updateProcessService = catchError(
 );
 
 // Create a new meeting
-exports.createMeeting = catchError(
-  asyncHandler(async (req, res, next) => {
-    const { userId, serviceId, date } = req.body;
-
-    // Check if the user exists
-    const user = await User.findById(userId);
-    if (!user) {
-      return next(new ApiError('User not found', 404));
-    }
-
-    // Check if the service exists
-    const service = await Service.findById(serviceId);
-    if (!service) {
-      return next(new ApiError('Service not found', 404));
-    }
-
-    // Check if the service is belones to the user
-    if (!service.userId.equals(userId)) {
-      return next(new ApiError('Service does not belong to the user', 400));
-    }
-
-    // Validate input
-    if (!serviceId || !date || !userId) {
-      return next(
-        new ApiError('Service ID, userId and meeting date are required', 400),
-      );
-    }
-
-    // Check if the date is in the future
-    if (new Date(date) < new Date()) {
-      return next(new ApiError('Meeting date must be in the future', 400));
-    }
-
-    // Create a new meeting
-    const meeting = await Meeting.create({
-      userId,
-      serviceId,
-      date,
-    });
-
-    // Send the response back to the client
-    res
-      .status(201)
-      .json(new ApiResponse(201, meeting, 'Meeting created successfully'));
-  }),
-);
+exports.createMeeting = factory.createOne(Meeting);
 
 // Main updateMeeting function
 exports.updateMeeting = factory.updateOne(Meeting);
 
 // Delete a meeting
 exports.deleteMeeting = factory.deleteOne(Meeting);
+
+// Create a new blog
+exports.createBlog = factory.createOne(Blog);
+
+// Main updateBlog function
+exports.updateBlog = factory.updateOne(Blog);
+
+// Delete a blog
+exports.deleteBlog = factory.deleteOne(Blog);
+ 

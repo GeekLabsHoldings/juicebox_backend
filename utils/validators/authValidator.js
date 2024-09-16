@@ -2,6 +2,9 @@ const { check } = require('express-validator');
 const User = require('../../models/userModel');
 const validatorMiddleware = require('../../middlewares/validationMiddleware');
 const { emailPattern, passwordPattern } = require('../../helpers/regExPatterns');
+const {
+  checkBirthDate,
+} = require('./validators');
 
 exports.signupValidator = [
   check('firstName')

@@ -4,6 +4,7 @@ const createToken = require('../utils/createToken');
 const User = require('../models/userModel');
 const Service = require('../models/serviceModel');
 const Meeting = require('../models/meetingModel');
+const Blog = require('../models/blogModel');
 const Process = require('../models/serviceProcessModel');
 const ApiError = require('../utils/apiError');
 const ApiResponse = require('../utils/apiResponse');
@@ -75,15 +76,15 @@ exports.updateLoggedUserData = catchError(async (req, res, next) => {
     newUser.avatar = fileLocation;
 
     // Remove old avatar from S3 if it exists
-    if (req.user.avatarPublicId) {
+    if (req.user.s3Key) {
       const deleteParams = {
         Bucket: process.env.AWS_BUCKET_NAME,
-        Key: req.user.avatarPublicId, // Assuming avatarPublicId is the S3 key
+        Key: req.user.s3Key, // Assuming s3Key is the S3 key
       };
       await s3.send(new DeleteObjectCommand(deleteParams));
     }
 
-    newUser.avatarPublicId = req.file.key; // Store the S3 key for future deletions
+    newUser.s3Key = req.file.key; // Store the S3 key for future deletions
   }
 
   // Update the user in the database
@@ -275,3 +276,6 @@ exports.deleteAllSeenNotifications = catchError(
     res.status(200).json(new ApiResponse(200, updatedUser.notifications, 'All seen notifications deleted'));
   }),
 )
+
+// Get all blogs
+exports.getAllBlogs = factory.getAll(Blog, ['title', 'content']);

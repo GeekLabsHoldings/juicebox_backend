@@ -41,7 +41,7 @@ const userSchema = new mongoose.Schema(
     avatar: {
       type: String,
     },
-    avatarPublicId: {
+    s3Key: {
       type: String,
     },
     role: {

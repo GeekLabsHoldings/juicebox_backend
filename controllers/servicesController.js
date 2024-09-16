@@ -29,14 +29,24 @@ exports.initializeService = catchError(
     let service;
 
     await withTransaction(async (session) => {
+      // Map the file URLs to their respective options dynamically
+      const processedOptions = options.map((option, index) => {
+        const file = req.files.find(file => file.fieldname === `fileUrl_${index}`);
+        if (file) {
+          option.fileUrl = file.location;
+        }
+        return option;
+      });
+
       service = new Service({
         type,
-        ...req.body,
+        options: processedOptions,
         userId: req.user._id,
         status,
         totalSteps: steps,
         currentStep: currentStep >= steps ? steps : currentStep,
       });
+
       await service.save({ session });
     });
 

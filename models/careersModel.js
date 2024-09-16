@@ -29,6 +29,7 @@ const careerModel = new mongoose.Schema(
       type: String, // URL or path to uploaded CV file
       required: [true, "CV is required"],
     },
+    s3Key: { type: String },
     portfolioLink: {
       type: String,
       trim: true,
@@ -54,6 +55,11 @@ const careerModel = new mongoose.Schema(
     vacancyId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Vacancy",
+    },
+    status: {
+      type: String,
+      enum: ["applied", "interview", "offer", "rejected"],
+      default: "applied",
     },
   },
   {

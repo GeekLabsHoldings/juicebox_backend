@@ -15,7 +15,7 @@ exports.deleteOne = (Model) =>
       }
 
       // Trigger "remove" event if necessary
-      document.remove();
+      document.deleteOne();
 
       const response = new ApiResponse(
         204,
@@ -90,7 +90,7 @@ exports.getOne = (Model, populationOpt) =>
     }),
   );
 
-exports.getAll = (Model, modelName = '') =>
+exports.getAll = (Model, searchableFields = []) =>
   catchError(
     asyncHandler(async (req, res) => {
       let filter = {};
@@ -102,7 +102,7 @@ exports.getAll = (Model, modelName = '') =>
       const apiFeatures = new ApiFeatures(Model.find(filter), req.query)
         .paginate(documentsCounts)
         .filter()
-        .search(modelName)
+        .search(searchableFields)
         .limitFields()
         .sort();
 
@@ -113,7 +113,7 @@ exports.getAll = (Model, modelName = '') =>
       const response = new ApiResponse(
         200,
         { results: documents.length, paginationResult, data: documents },
-        `${modelName} retrieved successfully`,
+        `${Model.modelName} retrieved successfully`,
       );
       res.status(response.statusCode).json(response);
     }),

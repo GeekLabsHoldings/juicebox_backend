@@ -13,6 +13,7 @@ const {
   getAllMeetingsForUser,
   getProcessForService,
   deleteAllSeenNotifications,
+  getAllBlogs,
 } = require("../controllers/userController");
 const {
   updateLoggedUserValidator,
@@ -48,5 +49,6 @@ router.get("/get-all-services", getAllServicesForUser);
 router.get("/get-all-meetings", getAllMeetingsForUser);
 router.get("/get-process/:id", getProcessForService);
 router.delete("/delete-all-seen-notifications", deleteAllSeenNotifications);
+router.get("/get-all-blogs", getAllBlogs);
 
 module.exports = router;

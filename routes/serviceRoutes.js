@@ -8,6 +8,8 @@ const {
   validateDomain,
   callSales,
 } = require("../controllers/servicesController.js");
+const uploadMediaWithFile = require('../services/fileUploadingService');
+const upload = require('../middlewares/uploadMiddleware');
 
 const authService = require("../services/authService");
 
@@ -17,7 +19,7 @@ router.use(authService.protect);
 
 router.use(authService.allowedTo("user"));
 
-router.post("/initialize-service", initializeService);
+router.post("/initialize-service", upload, initializeService);
 router.post("/:id/follow-up-service", continueService);
 router.post("/cancel", cancelService);
 router.post("/call-sales", callSales);

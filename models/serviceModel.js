@@ -5,6 +5,14 @@ const optionSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true },
   choice: { type: String, required: true, trim: true },
   ans: { type: String, trim: true },
+  data: {
+    fieldOne: { type: String, trim: true },
+    fieldTwo: { type: String, trim: true },
+    fieldThree: { type: String, trim: true },
+    fieldFour: { type: String, trim: true },
+    fieldFive: { type: String, trim: true },
+  },
+  fileUrl: { type: String, trim: true },
   price: { type: Number, required: true, min: 0 },
   duration: { type: Number, required: true, min: 0 },
 });
