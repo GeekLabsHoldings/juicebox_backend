@@ -29,7 +29,9 @@ const careerModel = new mongoose.Schema(
       type: String, // URL or path to uploaded CV file
       required: [true, "CV is required"],
     },
-    s3Key: { type: String },
+    s3Key: {
+      type: String,
+    },
     portfolioLink: {
       type: String,
       trim: true,

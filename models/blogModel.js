@@ -23,7 +23,9 @@ const blogSchema = new mongoose.Schema(
     mediaUrl: {
       type: String,
     },
-    s3Key: { type: String },
+    s3Key: {
+      type: String,
+    },
     spot: {
       type: String,
     },

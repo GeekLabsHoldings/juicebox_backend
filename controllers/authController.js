@@ -77,7 +77,7 @@ exports.signInController = catchError(
     // 2- Generate token
     const token = createToken(user);
 
-    res.status(200).json({ message: "Login successful", token });
+    res.status(200).json(new ApiResponse({ token }));
   })
 );
 

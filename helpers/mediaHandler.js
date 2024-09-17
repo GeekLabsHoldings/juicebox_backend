@@ -1,10 +1,13 @@
 const { s3 } = require('../config/awsConfig');
 const createMulterStorage = require('../middlewares/multerFileMiddleware');
 const { DeleteObjectCommand } = require('@aws-sdk/client-s3');
+const ApiError = require('../utils/apiError');
 
 // Unified media handler for upload, update, and delete operations
 const handleMedia = (folder, fieldName, allowedTypes, maxSize) => {
-  const upload = createMulterStorage(folder, allowedTypes, maxSize).single(fieldName);
+  const upload = createMulterStorage(folder, allowedTypes, maxSize).single(
+    fieldName,
+  );
 
   return async (req, res, next) => {
     try {
@@ -16,15 +19,15 @@ const handleMedia = (folder, fieldName, allowedTypes, maxSize) => {
 
         // If new file uploaded, handle old file deletion for update
         if (req.file && req.file.location && req.method === 'PUT') {
-          const mediaKey = req.body[fieldName]?.split('/').pop(); // Extract the old file's key
-          
+          const mediaKey = req.body.s3Key;
+
           if (mediaKey) {
             try {
               await s3.send(
                 new DeleteObjectCommand({
                   Bucket: process.env.AWS_BUCKET_NAME,
-                  Key: `${folder}/${mediaKey}`,
-                })
+                  Key: mediaKey,
+                }),
               );
             } catch (deleteErr) {
               console.error('Error deleting old media:', deleteErr);
@@ -32,13 +35,15 @@ const handleMedia = (folder, fieldName, allowedTypes, maxSize) => {
             }
           }
 
-          // Add the new file's URL to the request body
+          // Add the new file's URL and S3 key to the request body
           req.body[fieldName] = req.file.location;
+          req.body.s3Key = req.file.key; // Store the new S3 key
         }
 
-        // For create, add the media URL to the request body
+        // For create, add the media URL and S3 key to the request body
         if (req.file && req.file.location && req.method === 'POST') {
           req.body[fieldName] = req.file.location;
+          req.body.s3Key = req.file.key; // Store the new S3 key
         }
 
         next();
@@ -53,14 +58,14 @@ const handleMedia = (folder, fieldName, allowedTypes, maxSize) => {
 const deleteMedia = (folder, fieldName) => {
   return async (req, res, next) => {
     try {
-      const mediaKey = req.body[fieldName]?.split('/').pop();
+      const mediaKey = req.body.s3Key;
       if (mediaKey) {
         try {
           await s3.send(
             new DeleteObjectCommand({
               Bucket: process.env.AWS_BUCKET_NAME,
-              Key: `${folder}/${mediaKey}`,
-            })
+              Key: mediaKey,
+            }),
           );
           console.log(`Media file ${mediaKey} deleted successfully`);
         } catch (deleteErr) {
