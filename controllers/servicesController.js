@@ -31,7 +31,9 @@ exports.initializeService = catchError(
     await withTransaction(async (session) => {
       // Map the file URLs to their respective options dynamically
       const processedOptions = options.map((option, index) => {
-        const file = req.files.find(file => file.fieldname === `fileUrl_${index}`);
+        const file = req.files.find(
+          (file) => file.fieldname === `fileUrl_${index}`,
+        );
         if (file) {
           option.fileUrl = file.location;
         }
@@ -139,7 +141,8 @@ exports.cancelService = catchError(
 exports.linkCreditCard = catchError(
   asyncHandler(async (req, res) => {
     const { paymentMethodId } = req.body;
-    if (!paymentMethodId) throw new ApiError('Payment method ID is required', 400);
+    if (!paymentMethodId)
+      throw new ApiError('Payment method ID is required', 400);
 
     let user;
 
@@ -158,33 +161,48 @@ exports.linkCreditCard = catchError(
       await user.save({ session });
     })
       .then(() => {
-        res.status(200).json(new ApiResponse(200, user.linkCreditCard, 'Card linked successfully'));
+        res
+          .status(200)
+          .json(
+            new ApiResponse(
+              200,
+              user.linkCreditCard,
+              'Card linked successfully',
+            ),
+          );
       })
       .catch((error) => {
         const { status, message, details } = handleStripeError(error);
         res.status(status).json({ message, error: details });
       });
-  })
+  }),
 );
 
 // Purchase a service
 exports.purchaseService = catchError(
   asyncHandler(async (req, res) => {
     const { serviceId, paymentMethodId } = req.body;
-    if (!serviceId || !paymentMethodId) throw new ApiError('Service ID and payment method ID are required', 400);
+    if (!serviceId || !paymentMethodId)
+      throw new ApiError('Service ID and payment method ID are required', 400);
 
     let paymentIntent;
 
     await withTransaction(async (session) => {
       // Fetch service and user data in parallel
       const [service, user] = await Promise.all([
-        Service.findById(serviceId).select('totalPrice paymentStatus status').session(session),
-        User.findById(req.user._id).select('stripeCustomerId balance currency').session(session),
+        Service.findById(serviceId)
+          .select('totalPrice paymentStatus status')
+          .session(session),
+        User.findById(req.user._id)
+          .select('stripeCustomerId balance currency')
+          .session(session),
       ]);
 
       if (!service) throw new ApiError('Service not found', 404);
-      if (service.status !== 'completed') throw new ApiError('Only completed services can be purchased', 400);
-      if (service.paymentStatus === 'paid') throw new ApiError('Service is already paid', 400);
+      if (service.status !== 'completed')
+        throw new ApiError('Only completed services can be purchased', 400);
+      if (service.paymentStatus === 'paid')
+        throw new ApiError('Service is already paid', 400);
 
       // Update user balance using the utility function
       await updateBalanceInUserModel(user);
@@ -200,7 +218,7 @@ exports.purchaseService = catchError(
           service.totalPrice,
           user.currency,
           paymentMethodId,
-          user.stripeCustomerId
+          user.stripeCustomerId,
         );
 
         const payment = new Payment({
@@ -221,16 +239,23 @@ exports.purchaseService = catchError(
         service.status = 'purchased';
         await service.save({ session });
 
-        res.status(200).json(new ApiResponse(200, paymentIntent, 'Service purchased successfully'));
+        res
+          .status(200)
+          .json(
+            new ApiResponse(
+              200,
+              paymentIntent,
+              'Service purchased successfully',
+            ),
+          );
       } catch (error) {
         throw error; // This will be caught in the transaction and handled by handleStripeError
       }
-    })
-    .catch((error) => {
+    }).catch((error) => {
       const { status, message, details } = handleStripeError(error);
       res.status(status).json({ message, error: details });
     });
-  })
+  }),
 );
 
 // Validate domain
@@ -260,5 +285,32 @@ exports.validateDomain = catchError(
         throw new ApiError('Error checking domain availability', 500);
       }
     }
+  }),
+);
+
+// get all ser that user has purchased
+exports.getUserPurchasedServices = catchError(
+  asyncHandler(async (req, res) => {
+    const userId = req.user._id;
+    const user = await User.findById({ _id: userId });
+    if (!user) {
+      throw new ApiError('User not found', 404);
+    }
+
+    const payment = await Payment.find({ userId: user._id, status: 'paid' });
+
+    const services = await Service.find({
+      where: {
+        userId,
+        status: 'purchased',
+        _id: {
+          $in: payment.map((p) => p.serviceId),
+        },
+      },
+    });
+
+    res
+      .status(200)
+      .json(new ApiResponse(200, services, 'All Services for User retrieved'));
   }),
 );

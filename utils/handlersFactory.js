@@ -4,6 +4,7 @@ const ApiResponse = require('./apiResponse');
 const ApiFeatures = require('./apiFeatures');
 const { catchError } = require('../middlewares/catchErrorMiddleware');
 const { withTransaction } = require('../helpers/transactionHelper');
+const redisClient = require('../config/redis');
 
 exports.deleteOne = (Model) =>
   catchError(
@@ -20,6 +21,9 @@ exports.deleteOne = (Model) =>
             new ApiError(`No document found for this ID: ${id}`, 404),
           );
         }
+
+        // Invalidate cache
+        await redisClient.del(`document:${id}`);
 
         // Trigger "remove" event if necessary
         document.deleteOne();
@@ -56,6 +60,9 @@ exports.updateOne = (Model) =>
 
         // Trigger "save" event after update
         document = await document.save({ session });
+
+        // Invalidate cache
+        await redisClient.del(`document:${id}`);
       });
 
       const response = new ApiResponse(
@@ -90,6 +97,20 @@ exports.getOne = (Model, populationOpt) =>
     asyncHandler(async (req, res, next) => {
       const { id } = req.params;
 
+      // Check if data is in cache
+      const cachedDocument = await redisClient.get(`document:${id}`);
+      if (cachedDocument) {
+        return res
+          .status(200)
+          .json(
+            new ApiResponse(
+              200,
+              JSON.parse(cachedDocument),
+              `${Model.modelName} retrieved successfully (from cache)`,
+            ),
+          );
+      }
+
       let document;
 
       await withTransaction(async (session) => {
@@ -105,6 +126,13 @@ exports.getOne = (Model, populationOpt) =>
             new ApiError(`No document found for this ID: ${id}`, 404),
           );
         }
+
+        // Cache the document in Redis
+        await redisClient.setex(
+          `document:${id}`,
+          3600,
+          JSON.stringify(document),
+        ); // Cache for 1 hour
       });
 
       const response = new ApiResponse(
@@ -114,16 +142,32 @@ exports.getOne = (Model, populationOpt) =>
       );
       res.status(response.statusCode).json(response);
     }),
-  );
+  ); 
 
 exports.getAll = (Model, searchableFields = []) =>
   catchError(
     asyncHandler(async (req, res) => {
+      const page = req.query.page || 1;
+
+      // Check if the result is cached
+      const cachedDocuments = await redisClient.get(`documents:page:${page}`);
+      if (cachedDocuments) {
+        return res
+          .status(200)
+          .json(
+            new ApiResponse(
+              200,
+              JSON.parse(cachedDocuments),
+              `${Model.modelName} retrieved successfully (from cache)`,
+            ),
+          );
+      }
+
       let filter = {};
       if (req.filterObj) {
         filter = req.filterObj;
       }
-      // Build query
+
       const documentsCounts = await Model.countDocuments();
       const apiFeatures = new ApiFeatures(Model.find(filter), req.query)
         .paginate(documentsCounts)
@@ -132,9 +176,19 @@ exports.getAll = (Model, searchableFields = []) =>
         .limitFields()
         .sort();
 
-      // Execute query
       const { mongooseQuery, paginationResult } = apiFeatures;
       const documents = await mongooseQuery;
+
+      // Cache the documents in Redis
+      await redisClient.setex(
+        `documents:page:${page}`,
+        3600,
+        JSON.stringify({
+          results: documents.length,
+          paginationResult,
+          data: documents,
+        }),
+      ); // Cache for 1 hour
 
       const response = new ApiResponse(
         200,

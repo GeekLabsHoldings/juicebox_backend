@@ -8,7 +8,6 @@ const {
   validateDomain,
   callSales,
 } = require("../controllers/servicesController.js");
-const uploadMediaWithFile = require('../services/fileUploadingService');
 const upload = require('../middlewares/uploadMiddleware');
 
 const authService = require("../services/authService");
