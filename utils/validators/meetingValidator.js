@@ -31,10 +31,22 @@ exports.createMeetingValidation = [
     await checkServiceOwnership(req.body.userId, serviceId);
   }),
 
-  body('invitees').custom((invitees) => {
-    if (!Array.isArray(invitees)) {
+  body('time')
+  .notEmpty()
+  .withMessage('Time is required'),
+
+  body('inviteesId').custom(async (inviteesId) => {
+    if (!Array.isArray(inviteesId)) {
       throw new Error('Invitees must be an array');
     }
+
+    const invitees = await User.find({ _id: { $in: inviteesId } });
+    const nonAdmins = invitees.filter((invitee) => invitee.role !== 'admin');
+
+    if (nonAdmins.length > 0) {
+      throw new Error('All invitees must be admins');
+    }
+
     return true;
   }),
 
@@ -47,7 +59,12 @@ exports.updateMeetingValidation = [
 
   validateFutureDate('date', 'body'),
 
-  validateMongoId('id', 'params'), 
+  body('time')
+  .optional()
+  .notEmpty()
+  .withMessage('Time is required'),
+
+  validateMongoId('id', 'params'),
 
   validatorMiddleware,
 ];

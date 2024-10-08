@@ -4,7 +4,6 @@ const createToken = require('../utils/createToken');
 const User = require('../models/userModel');
 const Service = require('../models/serviceModel');
 const Meeting = require('../models/meetingModel');
-const Blog = require('../models/blogModel');
 const Process = require('../models/serviceProcessModel');
 const ApiError = require('../utils/apiError');
 const ApiResponse = require('../utils/apiResponse');
@@ -42,7 +41,7 @@ exports.updateLoggedUserPassword = catchError(
     const user = await User.findById(req.user._id).select('+password');
 
     if (!user) {
-      return next (new ApiError('User not found', 404));
+      return next(new ApiError('User not found', 404));
     }
 
     // 2) Check if the current password is correct
@@ -54,15 +53,17 @@ exports.updateLoggedUserPassword = catchError(
     // 3) If correct, hash the new password
     user.password = await bcrypt.hash(newPassword, 12);
     user.passwordChangedAt = Date.now();
-    
+
     // 4) Save the updated user
     await user.save();
 
     // 5) Generate a new token
     const token = createToken(user._id);
 
-    res.status(200).json(new ApiResponse(200, { token }, 'Password updated successfully'));
-  })
+    res
+      .status(200)
+      .json(new ApiResponse(200, { token }, 'Password updated successfully'));
+  }),
 );
 
 // @desc    Update logged user data (excluding password, role)
@@ -134,7 +135,7 @@ exports.seenNotification = catchError(
 
     // Check if notification exists
     const notification = findNotification(user.notifications, id);
-    
+
     if (!notification) {
       return next(new ApiError('Notification not found', 404));
     }
@@ -189,7 +190,9 @@ exports.getAllUserNotifications = catchError(
 
     await checkServiceOwnership(userId);
 
-    const user = await User.findById(userId).populate('notifications.serviceId');
+    const user = await User.findById(userId).populate(
+      'notifications.serviceId',
+    );
     if (!user) {
       return next(new ApiError('User not found', 404));
     }
@@ -225,18 +228,29 @@ exports.getAllServicesForUser = catchError(
     );
 
     // Send the response with services and their progress
-    res.status(200).json(new ApiResponse(200, servicesWithProgress, 'All Services for User retrieved'));
+    res
+      .status(200)
+      .json(
+        new ApiResponse(
+          200,
+          servicesWithProgress,
+          'All Services for User retrieved',
+        ),
+      );
   }),
 );
 
-// Get all meetings 
+// Get all meetings
 exports.getAllMeetingsForUser = catchError(
   asyncHandler(async (req, res) => {
     const userId = req.user._id;
-    const meetings = await Meeting.find({ userId }).sort({ createdAt: -1 }).populate('serviceId');
+    const meetings = await Meeting.find({ userId })
+      .sort({ createdAt: -1 })
+      .populate('serviceId');
     res.status(200).json(new ApiResponse(200, meetings, 'Meetings retrieved'));
   }),
-)
+);
+
 // get process for service
 exports.getProcessForService = catchError(
   asyncHandler(async (req, res) => {
@@ -255,7 +269,7 @@ exports.getProcessForService = catchError(
   }),
 );
 
-// get all porcess for user 
+// get all porcess for user
 exports.getAllServicesProcess = catchError(
   asyncHandler(async (req, res) => {
     const userId = req.user._id;
@@ -268,19 +282,31 @@ exports.getAllServicesProcess = catchError(
     }
 
     // Find processes related to the retrieved services
-    const serviceIds = services.map(service => service._id);
+    const serviceIds = services.map((service) => service._id);
     const processes = await Process.find({ serviceId: { $in: serviceIds } });
 
     // Group processes by serviceId
-    const groupedProcesses = services.map(service => ({
+    const groupedProcesses = services.map((service) => ({
       service,
-      processes: processes.filter(process => process.serviceId.equals(service._id)),
+      processes: processes.filter((process) =>
+        process.serviceId.equals(service._id),
+      ),
     }));
 
     // Filter out services that have no processes
-    const filteredGroupedProcesses = groupedProcesses.filter(group => group.processes.length > 0);
+    const filteredGroupedProcesses = groupedProcesses.filter(
+      (group) => group.processes.length > 0,
+    );
 
-    res.status(200).json(new ApiResponse(200, filteredGroupedProcesses, 'Processes retrieved successfully.'));
+    res
+      .status(200)
+      .json(
+        new ApiResponse(
+          200,
+          filteredGroupedProcesses,
+          'Processes retrieved successfully.',
+        ),
+      );
   }),
 );
 
@@ -296,13 +322,47 @@ exports.deleteAllSeenNotifications = catchError(
     // Remove all seen notifications
     await user.updateOne({
       $pull: {
-        notifications: { seen: true }
-      }
+        notifications: { seen: true },
+      },
     });
 
     // Fetch the updated user data to get the latest notifications
     const updatedUser = await User.findById(userId);
-    
-    res.status(200).json(new ApiResponse(200, updatedUser.notifications, 'All seen notifications deleted'));
+
+    res
+      .status(200)
+      .json(
+        new ApiResponse(
+          200,
+          updatedUser.notifications,
+          'All seen notifications deleted',
+        ),
+      );
   }),
-)
+);
+
+// Get Invitees for a Meeting
+exports.getInvitees = catchError(
+  asyncHandler(async (req, res, next) => {
+    const { meetingId } = req.params;
+
+    // Find the meeting
+    const meeting = await Meeting.findById(meetingId).populate('inviteesId');
+
+    if (!meeting) {
+      return next(new ApiError('Meeting not found', 404));
+    }
+
+    // Filter invitees who are admins
+    const invitees = meeting.inviteesId.filter(
+      (invitee) => invitee.role === 'admin',
+    );
+
+    res.status(200).json({
+      status: 'success',
+      data: {
+        invitees,
+      },
+    });
+  }),
+);

@@ -14,7 +14,12 @@ const meetingSchema = new mongoose.Schema(
       required: true,
       index: true, // Index for quick service-based lookups
     },
-    inviteesId: [],
+    inviteesId: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+      },
+    ],
     status: {
       type: String,
       enum: ['accepted', 'declined', 'completed'],
@@ -23,6 +28,10 @@ const meetingSchema = new mongoose.Schema(
     },
     date: {
       type: Date,
+      required: true,
+    },
+    time: {
+      type: String,
       required: true,
     },
   },

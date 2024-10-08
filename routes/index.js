@@ -4,7 +4,6 @@ const serviceRoutes = require('./serviceRoutes');
 const adminRoutes = require('./adminRoutes');
 const vacancyRoutes  = require('./vacancyRoutes');
 const blogsRoutes = require('./blogsRoutes');
-const cacheMiddleware = require('../middlewares/cachingMiddleware');
 
 const mountRoutes = (app) => {
   app.use('/api/v1/auth', authRoutes);

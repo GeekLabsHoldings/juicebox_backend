@@ -207,60 +207,54 @@ exports.linkCreditCard = catchError(
     if (!paymentMethodId)
       throw new ApiError('Payment method ID is required', 400);
 
-    let user;
-
-    await withTransaction(async (session) => {
-      // Fetch the user with relevant fields
-      user = await User.findById(req.user._id)
-        .select(
-          'stripeCustomerId linkedCards balance currency email firstName lastName',
-        )
-        .session(session);
-      if (!user) throw new ApiError('User not found', 404);
-
-      // Create Stripe customer if not present
-      if (!user.stripeCustomerId) {
-        const customer = await stripe.customers.create({
-          email: user.email,
-          name: `${user.firstName} ${user.lastName}`,
-        });
-        user.stripeCustomerId = customer.id;
-        await user.save({ session });
-      }
-
-      // Attach the payment method to the Stripe customer
-      const paymentMethod = await stripe.paymentMethods.attach(
-        paymentMethodId,
-        {
-          customer: user.stripeCustomerId,
-        },
+    // Fetch the user with relevant fields
+    const user = await User.findById(req.user._id)
+      .select(
+        'stripeCustomerId linkedCards balance currency email firstName lastName'
       );
+    if (!user) throw new ApiError('User not found', 404);
 
-      // Update user balance
-      await updateBalanceInUserModel(user, session);
-
-      // Save the linked card to the user’s document
-      user.linkedCards.push({ stripePaymentMethodId: paymentMethod.id });
-      await user.save({ session });
-    })
-      .then(() => {
-        res
-          .status(200)
-          .json(
-            new ApiResponse(
-              200,
-              user.linkCreditCard,
-              'Card linked successfully',
-            ),
-          );
-      })
-      .catch((error) => {
-        const { status, message, details } = handleStripeError(error);
-        res.status(status).json({ message, error: details });
+    // Create Stripe customer if not present
+    if (!user.stripeCustomerId) {
+      const customer = await stripe.customers.create({
+        email: user.email,
+        name: `${user.firstName} ${user.lastName}`,
       });
-  }),
-);
+      user.stripeCustomerId = customer.id;
+      await user.save();
+    }
 
+    // Attach the payment method to the Stripe customer
+    const paymentMethod = await stripe.paymentMethods.attach(paymentMethodId, {
+      customer: user.stripeCustomerId,
+    });
+
+    // Extract card details
+    const last4 = paymentMethod.card.last4;
+    const expMonth = paymentMethod.card.exp_month;
+    const expYear = paymentMethod.card.exp_year;
+    const expDate = `${expMonth}/${expYear}`;
+
+    // Update user balance
+    await updateBalanceInUserModel(user);
+
+    // Save the linked card with card details to the user’s document
+    user.linkedCards.push({
+      stripePaymentMethodId: paymentMethod.id,
+      last4: last4,
+      expDate: expDate,
+    });
+
+    await user.save();
+
+    // Send response
+    res
+      .status(200)
+      .json(
+        new ApiResponse(200, user.linkCreditCard, 'Card linked successfully')
+      );
+  })
+);
 
 // Purchase a service
 exports.purchaseService = catchError(
@@ -322,6 +316,14 @@ exports.purchaseService = catchError(
       },
     });
 
+    // Update user balance using the utility function
+    await updateBalanceInUserModel(user);
+
+    // Check if user has sufficient balance
+    if (!checkBalance(user, service.totalPrice)) {
+      throw new ApiError('Insufficient balance', 400);
+    }
+
     const amount = service.totalPrice * 100;
 
     // Create payment intent with customer information
@@ -366,12 +368,15 @@ exports.purchaseService = catchError(
       status: "pending",
     });
 
+    // Deduct the balance from the user
+    await updateUserBalance(user, service.totalPrice);
+
     res
       .status(200)
       .json(
         new ApiResponse(
           200,
-          user.linkCreditCard,
+          payment.id,
           "Service subscribed successfully"
         )
       );
@@ -413,13 +418,30 @@ exports.getUserPurchasedServices = catchError(
   asyncHandler(async (req, res) => {
     const services = await Service.find({
       userId: req.user._id,
-      status: 'purchased',
+      status: "purchased",
     });
+
+    // Retrieve payment data for each service
+    const servicesWithPayments = await Promise.all(
+      services.map(async (service) => {
+        const payment = await Payment.findOne({
+          serviceId: service._id,
+          userId: req.user._id,
+        });
+
+        return {
+          service,
+          payment,
+        };
+      })
+    );
 
     res
       .status(200)
-      .json(new ApiResponse(200, services, 'All Services for User retrieved'));
-  }),
+      .json(
+        new ApiResponse(200, servicesWithPayments, "All Services with Payments retrieved")
+      );
+  })
 );
 
 // Get service by id

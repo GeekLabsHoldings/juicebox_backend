@@ -13,13 +13,14 @@ const lazyRevalidation = async (key, queryFn, ttl = 3600) => {
         console.error('Error during lazy revalidation:', error);
       }
     }, 0);
+
     return JSON.parse(cachedData);
-  } else {
-    // No cache, fetch fresh data
-    const freshData = await queryFn();
-    await redisClient.set(key, JSON.stringify(freshData), { EX: ttl });
-    return freshData;
   }
+
+  // If no cache exists, query fresh data
+  const freshData = await queryFn();
+  await redisClient.set(key, JSON.stringify(freshData), { EX: ttl });
+  return freshData;
 };
 
-module.exports = { lazyRevalidation };
+module.exports = lazyRevalidation;
