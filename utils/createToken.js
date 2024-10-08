@@ -5,7 +5,8 @@ const createToken = (user) =>
     {
       userId: user._id,
       email: user.email,
-      name: user.name,
+      firstName: user.firstName,
+      lastName: user.lastName,
       avatar: user.avatar,
       role: user.role,
       ISD: user.ISD,
@@ -18,6 +19,7 @@ const createToken = (user) =>
       country: user.country,
       org: user.org,
       position: user.position,
+      googleId: user.googleId,
     },
     process.env.JWT_SECRET_KEY,
     {

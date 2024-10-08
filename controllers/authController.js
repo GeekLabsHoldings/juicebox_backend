@@ -28,11 +28,10 @@ exports.signUpController = catchError(
     const formattedFirstName = capitalizeFirstLetter(firstName);
     const formattedLastName = capitalizeFirstLetter(lastName);
 
-    // Combine formatted names into fullName
-    const fullName = `${formattedFirstName} ${formattedLastName}`;
 
     const newUser = new User({
-      name: fullName,
+      firstName: formattedFirstName,
+      lastName: formattedLastName,
       email,
       password,
       ISD,
@@ -77,7 +76,7 @@ exports.signInController = catchError(
     // 2- Generate token
     const token = createToken(user);
 
-    res.status(200).json(new ApiResponse({ token }));
+    res.status(200).json(new ApiResponse(200, { token }, 'User logged in successfully'));
   })
 );
 
@@ -219,9 +218,13 @@ exports.googleLogin = asyncHandler(async (req, res, next) => {
 
   const user = await User.findOne({ email });
 
+  const formattedFirstName = capitalizeFirstLetter(given_name);
+  const formattedLastName = capitalizeFirstLetter(family_name);
+
   if (!user) {
     const newUser = await User.create({
-      name: `${given_name} ${family_name}`,
+      firstName: formattedFirstName,
+      lastName: formattedLastName,
       email,
       avatar: picture,
       googleId: sub,

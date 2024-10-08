@@ -13,7 +13,7 @@ const {
   getAllMeetingsForUser,
   getProcessForService,
   deleteAllSeenNotifications,
-  getAllBlogs,
+  getAllServicesProcess,
 } = require("../controllers/userController");
 const {
   updateLoggedUserValidator,
@@ -33,7 +33,7 @@ const router = express.Router();
 router.use(authService.protect);
 router.use(authService.allowedTo("user"));
 
-router.get("/get-me", getLoggedUserData, getUser);
+router.get('/get-me', getLoggedUserData, getUser);
 router.put("/change-my-password", updateLoggedUserPassword);
 router.put(
   "/update-me",
@@ -48,7 +48,7 @@ router.get("/get-all-user-notifications", getAllUserNotifications);
 router.get("/get-all-services", getAllServicesForUser);
 router.get("/get-all-meetings", getAllMeetingsForUser);
 router.get("/get-process/:id", getProcessForService);
+router.get("/get-all-services-process", getAllServicesProcess);
 router.delete("/delete-all-seen-notifications", deleteAllSeenNotifications);
-router.get("/get-all-blogs", getAllBlogs);
 
 module.exports = router;

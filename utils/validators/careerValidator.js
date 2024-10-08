@@ -4,16 +4,11 @@ const validatorMiddleware = require("../../middlewares/validationMiddleware");
 // Validation rules for postCareer
 exports.careerValidationRules = [
   body("vacancyId").isMongoId().withMessage("Invalid vacancy ID"),
-  body("firstName")
+  body("name")
     .notEmpty()
-    .withMessage("First name is required")
+    .withMessage("Name is required")
     .isAlpha()
-    .withMessage("First name must contain only letters"),
-  body("lastName")
-    .notEmpty()
-    .withMessage("Last name is required")
-    .isAlpha()
-    .withMessage("Last name must contain only letters"),
+    .withMessage("Name must contain only letters"),
   body("email").isEmail().withMessage("Invalid email address"),
   body("phoneNumber")
     .optional()

@@ -57,6 +57,12 @@ const serviceSchema = new mongoose.Schema(
       type: Number,
       required: true,
     },
+    date: {
+      type: String,
+    },
+    time: {
+      type: String,
+    },
     paymentStatus: {
       type: String,
       enum: ['pending', 'paid', 'failed'],
@@ -78,17 +84,40 @@ serviceSchema.pre('save', async function (next) {
     let totalPrice = 0;
     let totalDuration = 0;
 
-    this.options.forEach((option) => {
-      totalPrice += option.price;
-      totalDuration += option.duration;
-    });
+    // Ensure options are present and iterate over them
+    if (this.options && Array.isArray(this.options)) {
+      this.options.forEach((option) => {
+        // Ensure that price and duration are valid numbers
+        const price = option.price || 0;
+        const duration = option.duration || 0;
 
+        if (typeof price !== 'number' || price < 0) {
+          throw new ApiError(`Invalid price value in option: ${option.name}`, 400);
+        }
+
+        if (typeof duration !== 'number' || duration < 0) {
+          throw new ApiError(`Invalid duration value in option: ${option.name}`, 400);
+        }
+
+        // Accumulate the total price and duration
+        totalPrice += price;
+        totalDuration += duration;
+      });
+    }
+
+    // Set the calculated values
     this.totalPrice = totalPrice;
     this.estimatedDuration = totalDuration;
 
+    // Check if the status is not 'call-sales', and remove the date and time fields
+    if (this.status !== 'call-sales') {
+      this.date = undefined;
+      this.time = undefined;
+    }
+
     next();
   } catch (error) {
-    next(new ApiError('Error calculating totals', 500));
+    next(new ApiError('Error calculating totals: ' + error.message, 500));
   }
 });
 

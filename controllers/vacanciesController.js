@@ -24,8 +24,7 @@ exports.postCareer = catchError(
   asyncHandler(async (req, res) => {
     const {
       vacancyId,
-      firstName,
-      lastName,
+      name,
       email,
       linkedInLink,
       portfolioLink,
@@ -43,14 +42,10 @@ exports.postCareer = catchError(
       throw new ApiError('Cannot apply for a closed vacancy', 400);
     }
 
-    // Capitalize names
-    const formattedFirstName = capitalizeFirstLetter(firstName);
-    const formattedLastName = capitalizeFirstLetter(lastName);
-    const fullName = `${formattedFirstName} ${formattedLastName}`;
 
     // Create new career entry
     const newCareer = new Career({
-      name: fullName,
+      name,
       vacancyId,
       email,
       phoneNumber,

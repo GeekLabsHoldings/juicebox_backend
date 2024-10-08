@@ -15,12 +15,18 @@ const notificationSchema = new mongoose.Schema({
 
 const userSchema = new mongoose.Schema(
   {
-    name: {
+    firstName: {
       type: String,
-      minlength: [2, "Name must be at least 2 characters long"],
-      maxlength: [50, "Name must be less than 50 characters long"],
+      minlength: [2, "First name must be at least 2 characters long"],
+      maxlength: [50, "First name must be less than 50 characters long"],
       trim: true,
       index: true, // Indexing first name for faster lookups
+    },
+    lastName: {
+      type: String,
+      minlength: [2, "Last name must be at least 2 characters long"],
+      maxlength: [50, "Last name must be less than 50 characters long"],
+      trim: true,
     },
     email: {
       type: String,
@@ -108,26 +114,28 @@ const userSchema = new mongoose.Schema(
     passwordResetVerified: {
       type: Boolean,
     },
+    adminPosition: {
+      type: String,
+      index: true, // Index admin position for quick filtering
+    },
     verifyEmail: {
       type: Boolean,
       default: false,
       index: true, // Index to quickly find verified/unverified users
     },
-    linkedCards: [{
-      stripeCardId: { type: String, index: true },  // Store Stripe Card ID
-    }],
     googleId: {
       type: String,
       index: true, // Indexing for quick lookup with Google auth
-    },
-    appleId: {
-      type: String,
-      index: true, // Indexing for quick lookup with Apple auth
     },
     stripeCustomerId: {
       type: String,
       index: true, // Indexing for quick lookup with Stripe
     },
+    linkedCards: [{
+      stripePaymentMethodId: { type: String, index: true },  
+      last4: { type: String },
+      expDate: { type: String },
+    }],
     balance: {
       type: Number,
       default: 0,

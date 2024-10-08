@@ -3,6 +3,8 @@ const userRoutes = require('./userRoutes');
 const serviceRoutes = require('./serviceRoutes');
 const adminRoutes = require('./adminRoutes');
 const vacancyRoutes  = require('./vacancyRoutes');
+const blogsRoutes = require('./blogsRoutes');
+const cacheMiddleware = require('../middlewares/cachingMiddleware');
 
 const mountRoutes = (app) => {
   app.use('/api/v1/auth', authRoutes);
@@ -10,6 +12,7 @@ const mountRoutes = (app) => {
   app.use('/api/v1/services', serviceRoutes);
   app.use('/api/v1/admin', adminRoutes);
   app.use('/api/v1/vacancy', vacancyRoutes);
+  app.use('/api/v1/blogs', blogsRoutes);
 };
 
 module.exports = mountRoutes;

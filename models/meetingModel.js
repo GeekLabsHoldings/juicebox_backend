@@ -14,6 +14,7 @@ const meetingSchema = new mongoose.Schema(
       required: true,
       index: true, // Index for quick service-based lookups
     },
+    inviteesId: [],
     status: {
       type: String,
       enum: ['accepted', 'declined', 'completed'],

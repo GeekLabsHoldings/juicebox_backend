@@ -26,35 +26,43 @@ exports.getUser = factory.getOne(User);
 // @desc    Get Logged user data
 // @route   GET /api/v1/users/getMe
 // @access  Private/Protect
-exports.getLoggedUserData = catchError(
-  asyncHandler(async (req, res, next) => {
-    req.params.id = req.user._id;
-    next();
-  }),
-);
+exports.getLoggedUserData = asyncHandler(async (req, res, next) => {
+  req.params.id = req.user._id;
+  next();
+});
 
 // @desc    Update logged user password
 // @route   PUT /api/v1/users/updateMyPassword
 // @access  Private/Protect
 exports.updateLoggedUserPassword = catchError(
   asyncHandler(async (req, res, next) => {
-    // 1) Update user password based user payload (req.user._id)
-    const user = await User.findByIdAndUpdate(
-      req.user._id,
-      {
-        password: await bcrypt.hash(req.body.password, 12),
-        passwordChangedAt: Date.now(),
-      },
-      {
-        new: true,
-      },
-    );
+    const { currentPassword, newPassword } = req.body;
 
-    // 2) Generate token
+    // 1) Find the user based on the ID stored in the token (req.user._id)
+    const user = await User.findById(req.user._id).select('+password');
+
+    if (!user) {
+      return next (new ApiError('User not found', 404));
+    }
+
+    // 2) Check if the current password is correct
+    const isMatch = await bcrypt.compare(currentPassword, user.password);
+    if (!isMatch) {
+      return next(new ApiError('Incorrect password', 400));
+    }
+
+    // 3) If correct, hash the new password
+    user.password = await bcrypt.hash(newPassword, 12);
+    user.passwordChangedAt = Date.now();
+    
+    // 4) Save the updated user
+    await user.save();
+
+    // 5) Generate a new token
     const token = createToken(user._id);
 
-    res.status(200).json(new ApiResponse(200, { token }, 'Password updated'));
-  }),
+    res.status(200).json(new ApiResponse(200, { token }, 'Password updated successfully'));
+  })
 );
 
 // @desc    Update logged user data (excluding password, role)
@@ -181,7 +189,7 @@ exports.getAllUserNotifications = catchError(
 
     await checkServiceOwnership(userId);
 
-    const user = await User.findById(userId);
+    const user = await User.findById(userId).populate('notifications.serviceId');
     if (!user) {
       return next(new ApiError('User not found', 404));
     }
@@ -221,22 +229,15 @@ exports.getAllServicesForUser = catchError(
   }),
 );
 
-// Get all meetings when status is accepted for the authenticated user
+// Get all meetings 
 exports.getAllMeetingsForUser = catchError(
   asyncHandler(async (req, res) => {
     const userId = req.user._id;
-
-    // Find all meetings for the user
-    const meetings = await Meeting.find({
-      userId,
-      status: { $ne: 'accepted' },
-    }).populate('serviceId', 'type'); // Optional: populate serviceId to get service details
-
-    res.status(200).json(new ApiResponse(200, meetings, 'All Meetings for User retrieved'));
+    const meetings = await Meeting.find({ userId }).sort({ createdAt: -1 }).populate('serviceId');
+    res.status(200).json(new ApiResponse(200, meetings, 'Meetings retrieved'));
   }),
-);
-
-// get all process for service
+)
+// get process for service
 exports.getProcessForService = catchError(
   asyncHandler(async (req, res) => {
     const { id } = req.params;
@@ -251,6 +252,35 @@ exports.getProcessForService = catchError(
     }
 
     res.status(200).json(new ApiResponse(200, process, 'Process retrieved'));
+  }),
+);
+
+// get all porcess for user 
+exports.getAllServicesProcess = catchError(
+  asyncHandler(async (req, res) => {
+    const userId = req.user._id;
+
+    // Find all services for the user
+    const services = await Service.find({ userId });
+
+    if (!services.length) {
+      return res.status(404).json(new ApiError('No services found', 404));
+    }
+
+    // Find processes related to the retrieved services
+    const serviceIds = services.map(service => service._id);
+    const processes = await Process.find({ serviceId: { $in: serviceIds } });
+
+    // Group processes by serviceId
+    const groupedProcesses = services.map(service => ({
+      service,
+      processes: processes.filter(process => process.serviceId.equals(service._id)),
+    }));
+
+    // Filter out services that have no processes
+    const filteredGroupedProcesses = groupedProcesses.filter(group => group.processes.length > 0);
+
+    res.status(200).json(new ApiResponse(200, filteredGroupedProcesses, 'Processes retrieved successfully.'));
   }),
 );
 
@@ -276,6 +306,3 @@ exports.deleteAllSeenNotifications = catchError(
     res.status(200).json(new ApiResponse(200, updatedUser.notifications, 'All seen notifications deleted'));
   }),
 )
-
-// Get all blogs
-exports.getAllBlogs = factory.getAll(Blog, ['title', 'content']);

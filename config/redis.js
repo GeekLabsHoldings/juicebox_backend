@@ -1,18 +1,18 @@
-const redis = require("redis");
+const redis = require('redis');
 
-// Create a Redis client
 const redisClient = redis.createClient({
-  host: process.env.REDIS_HOST || '127.0.0.1',
-  port: process.env.REDIS_PORT || 6379,
-  password: process.env.REDIS_PASS || null,
-});
-
-redisClient.on('connect', () => {
-  console.log('Connected to Redis');
+  url: process.env.REDIS_URL || 'redis://localhost:6379',
+  socket: {
+    reconnectStrategy: (retries) => Math.min(retries * 50, 5000),
+  },
 });
 
 redisClient.on('error', (err) => {
-  console.error('Redis error:', err);
+  console.error('Redis Client Error:', err);
 });
+
+(async () => {
+  await redisClient.connect();
+})();
 
 module.exports = redisClient;

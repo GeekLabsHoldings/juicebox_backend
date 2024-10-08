@@ -10,6 +10,8 @@ const {
 const Service = require('../../models/serviceModel');
 const User = require('../../models/userModel');
 
+// Get all invitees of admins (users that role is admin) data taht will be attend the meeting with user(that role is user)
+
 // Validation for creating a meeting
 exports.createMeetingValidation = [
   validateMongoId('userId', 'body'),
@@ -27,6 +29,13 @@ exports.createMeetingValidation = [
   // Custom validation to ensure the service belongs to the user
   body('serviceId').custom(async (serviceId, { req }) => {
     await checkServiceOwnership(req.body.userId, serviceId);
+  }),
+
+  body('invitees').custom((invitees) => {
+    if (!Array.isArray(invitees)) {
+      throw new Error('Invitees must be an array');
+    }
+    return true;
   }),
 
   validatorMiddleware,
