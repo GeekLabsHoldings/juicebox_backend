@@ -6,7 +6,7 @@ const { catchError } = require('../middlewares/catchErrorMiddleware');
 const { withTransaction } = require('../helpers/transactionHelper');
 const redisClient = require('../config/redis');
 const cacheMiddleware = require('../middlewares/cachingMiddleware');
-const { lazyRevalidation } = require('../helpers/cacheHelper');
+const lazyRevalidation = require('../helpers/cacheHelper');
 
 const invalidateCache = async (key) => {
   try {
