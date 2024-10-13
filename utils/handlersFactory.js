@@ -98,32 +98,33 @@ exports.deleteOne = (Model) =>
   );
 
 exports.getOne = (Model, populationOpt) =>
-  catchError(asyncHandler(async (req, res, next) => {
-    const { id } = req.params;
-    const cacheKey = `${Model.modelName}_${id}`;
+  catchError(
+    asyncHandler(async (req, res, next) => {
+      const { id } = req.params;
+      const cacheKey = `${Model.modelName}_${id}`;
 
-    // Define the query function that retrieves fresh data from the database
-    const queryFn = async () => {
-      let query = Model.findById(id);
-      if (populationOpt) query = query.populate(populationOpt);
-      return await query;
-    };
+      // Define the query function that retrieves fresh data from the database
+      const queryFn = async () => {
+        let query = Model.findById(id);
+        if (populationOpt) query = query.populate(populationOpt);
+        return await query;
+      };
 
-    const document = await lazyRevalidation(cacheKey, queryFn, 300); // Cache for 5 minutes
+      const document = await lazyRevalidation(cacheKey, queryFn, 300);
 
-    if (!document) {
-      return next(new ApiError(`No document found for this ID: ${id}`, 404));
-    }
+      if (!document) {
+        return next(new ApiError(`No document found for this ID: ${id}`, 404));
+      }
 
-    const response = new ApiResponse(
-      200,
-      document,
-      `${Model.modelName} retrieved successfully`,
-    );
-    res.status(response.statusCode).json(response);
-  }),
-  cacheMiddleware((req) => `${Model.modelName}_${req.params.id}`, 300)
-);
+      const response = new ApiResponse(
+        200,
+        document,
+        `${Model.modelName} retrieved successfully`,
+      );
+      res.status(response.statusCode).json(response);
+    }),
+    cacheMiddleware((req) => `${Model.modelName}_${req.params.id}`, 300),
+  );
 
 exports.getAll = (Model, searchableFields = []) =>
   catchError(
