@@ -3,6 +3,7 @@ const { catchError } = require('../middlewares/catchErrorMiddleware');
 const Service = require('../models/serviceModel');
 const User = require('../models/userModel');
 const Payment = require('../models/paymentModel');
+const Process = require('../models/serviceProcessModel');
 const ApiError = require('../utils/apiError');
 const ApiResponse = require('../utils/apiResponse');
 const stripe = require('../config/stripe');
@@ -20,7 +21,7 @@ const {
 const factory = require('../utils/handlersFactory');
 const { withTransaction } = require('../helpers/transactionHelper');
 
-// Save a new service as in-progress
+// Save a new service as completed
 exports.initializeService = catchError(
   asyncHandler(async (req, res) => {
     const { type, options, totalSteps } = req.body;
@@ -62,6 +63,22 @@ exports.initializeService = catchError(
         currentStep: currentStep >= steps ? steps : currentStep,
         stripeProductId: stripeProduct.id,
       });
+
+      // Create 5 initial dummy processes for the service
+      const processOptions = [
+        { name: "Initial Consultation", done: false },
+        { name: "Design Process", done: false },
+        { name: "Development Process", done: false },
+        { name: "Testing Process", done: false },
+        { name: "Final Delivery", done: false },
+      ];
+      const process = new Process({
+        serviceId: service._id,
+        options: processOptions,
+        totalProgressPercentage: 0,
+      });
+
+      await process.save({ session });
 
       await service.save({ session });
     });
@@ -164,10 +181,10 @@ exports.scheduleCall = catchError(
         serviceId,
         {
           status: 'call-sales', // Set status to 'call-sales'
-          date,                 // Update the date
-          time                  // Update the time
+          date, // Update the date
+          time, // Update the time
         },
-        { new: true, session }   // Return the updated document
+        { new: true, session }, // Return the updated document
       );
     });
 
@@ -175,9 +192,8 @@ exports.scheduleCall = catchError(
     res
       .status(200)
       .json(new ApiResponse(200, service, 'Service scheduled successfully'));
-  })
+  }),
 );
-
 
 // Cancel a service
 exports.cancelService = catchError(
@@ -200,7 +216,7 @@ exports.cancelService = catchError(
   }),
 );
 
-// Link a credit card
+// Link a credit card, verify it with a test charge, and retrieve balance
 exports.linkCreditCard = catchError(
   asyncHandler(async (req, res) => {
     const { paymentMethodId } = req.body;
@@ -208,10 +224,9 @@ exports.linkCreditCard = catchError(
       throw new ApiError('Payment method ID is required', 400);
 
     // Fetch the user with relevant fields
-    const user = await User.findById(req.user._id)
-      .select(
-        'stripeCustomerId linkedCards balance currency email firstName lastName'
-      );
+    const user = await User.findById(req.user._id).select(
+      'stripeCustomerId linkedCards balance currency email firstName lastName',
+    );
     if (!user) throw new ApiError('User not found', 404);
 
     // Create Stripe customer if not present
@@ -235,9 +250,6 @@ exports.linkCreditCard = catchError(
     const expYear = paymentMethod.card.exp_year;
     const expDate = `${expMonth}/${expYear}`;
 
-    // Update user balance
-    await updateBalanceInUserModel(user);
-
     // Save the linked card with card details to the user’s document
     user.linkedCards.push({
       stripePaymentMethodId: paymentMethod.id,
@@ -247,13 +259,48 @@ exports.linkCreditCard = catchError(
 
     await user.save();
 
-    // Send response
-    res
-      .status(200)
-      .json(
-        new ApiResponse(200, user.linkCreditCard, 'Card linked successfully')
-      );
-  })
+    // Optionally: Verify the payment method by creating a test charge
+    const verificationAmount = 100; // Amount in cents (e.g., $1 for verification)
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: verificationAmount,
+      currency: 'usd',
+      payment_method: paymentMethodId,
+      customer: user.stripeCustomerId,
+      confirm: true,
+      capture_method: 'automatic',
+    });
+
+    // Immediately refund the verification charge after successful charge
+    await stripe.refunds.create({
+      payment_intent: paymentIntent.id,
+    });
+
+    // Retrieve balance from Stripe after successful card linking and verification
+    const balance = await stripe.balance.retrieve();
+
+    // Extract the available balance and currency
+    const availableBalance = balance.available[0].amount; // Amount in cents
+    const currency = balance.available[0].currency;
+
+    // Save balance and currency to the user's document
+    user.balance = availableBalance;
+    user.currency = currency;
+
+    await user.save();
+
+    // Send response with the updated card details, balance, and currency
+    res.status(200).json(
+      new ApiResponse(
+        200,
+        {
+          linkedCards: user.linkedCards,
+          balance: user.balance,
+          currency: user.currency,
+        },
+        'Card linked, verified, and balance retrieved successfully',
+      ),
+    );
+  }),
 );
 
 // Purchase a service
@@ -263,14 +310,14 @@ exports.purchaseService = catchError(
 
     if (!paymentMethodId || !serviceId) {
       return next(
-        new ApiError("PaymentMethodId and ServiceId are required", 400)
+        new ApiError('PaymentMethodId and ServiceId are required', 400),
       );
     }
 
     // Fetch user
     const user = await User.findById(req.user._id);
     if (!user) {
-      return next(new ApiError("User not found", 404));
+      return next(new ApiError('User not found', 404));
     }
 
     // Create Stripe customer if it doesn't exist
@@ -289,21 +336,21 @@ exports.purchaseService = catchError(
 
     const service = await Service.findById(serviceId);
     if (!service) {
-      return next(new ApiError("Service not found", 404));
+      return next(new ApiError('Service not found', 404));
     }
 
     if (service.userId.toString() !== user._id.toString()) {
       return next(
-        new ApiError("User is not authorized to purchase this service", 403)
+        new ApiError('User is not authorized to purchase this service', 403),
       );
     }
 
-    if (service.paymentStatus === "paid") {
-      return next(new ApiError("Service is already paid", 400));
+    if (service.paymentStatus === 'paid') {
+      return next(new ApiError('Service is already paid', 400));
     }
 
     const paymentMethod = await stripe.paymentMethods.retrieve(paymentMethodId);
-    if (!paymentMethod) throw new ApiError("Invalid Payment Method ID", 400);
+    if (!paymentMethod) throw new ApiError('Invalid Payment Method ID', 400);
 
     await stripe.paymentMethods.attach(paymentMethodId, {
       customer: user.stripeCustomerId,
@@ -316,27 +363,19 @@ exports.purchaseService = catchError(
       },
     });
 
-    // Update user balance using the utility function
-    await updateBalanceInUserModel(user);
-
-    // Check if user has sufficient balance
-    if (!checkBalance(user, service.totalPrice)) {
-      throw new ApiError('Insufficient balance', 400);
-    }
-
     const amount = service.totalPrice * 100;
 
     // Create payment intent with customer information
     const paymentIntent = await stripe.paymentIntents.create({
       amount: amount,
-      currency: "usd",
+      currency: 'usd',
       customer: user.stripeCustomerId,
       payment_method: paymentMethodId,
       confirm: true,
       description: `Payment for service: ${service.type}`,
       automatic_payment_methods: {
         enabled: true,
-        allow_redirects: "never",
+        allow_redirects: 'never',
       },
       metadata: {
         serviceId: String(serviceId),
@@ -344,20 +383,21 @@ exports.purchaseService = catchError(
       },
     });
 
-    // Extract card details from the payment method
-    const last4 = paymentMethod.card.last4;
-    const expMonth = paymentMethod.card.exp_month;
-    const expYear = paymentMethod.card.exp_year;
-    const expDate = `${expMonth}/${expYear}`;
+    // Check if paymentMethodId already exists in user's linkedCards
+    const isPaymentMethodExists = user.linkedCards.some(
+      (card) => card.stripePaymentMethodId === paymentMethodId,
+    );
 
-    // Save the payment method details to the user's linkedCards array
-    user.linkedCards.push({
-      stripePaymentMethodId: paymentMethodId,
-      last4: last4,
-      expDate: expDate,
-    });
-
-    await user.save();
+    // Save payment method details only if it doesn't already exist
+    if (!isPaymentMethodExists) {
+      const { last4, exp_month, exp_year } = paymentMethod.card;
+      user.linkedCards.push({
+        stripePaymentMethodId: paymentMethodId,
+        last4: last4,
+        expDate: `${exp_month}/${exp_year}`,
+      });
+      await user.save();
+    }
 
     // Create Payment record in MongoDB
     const payment = await Payment.create({
@@ -365,22 +405,15 @@ exports.purchaseService = catchError(
       serviceId: serviceId,
       amount: service.totalPrice,
       stripePaymentIntentId: paymentIntent.id,
-      status: "pending",
+      status: 'pending',
     });
-
-    // Deduct the balance from the user
-    await updateUserBalance(user, service.totalPrice);
 
     res
       .status(200)
       .json(
-        new ApiResponse(
-          200,
-          payment.id,
-          "Service subscribed successfully"
-        )
+        new ApiResponse(200, payment.id, 'Service subscribed successfully'),
       );
-  })
+  }),
 );
 
 // Validate domain
@@ -418,7 +451,7 @@ exports.getUserPurchasedServices = catchError(
   asyncHandler(async (req, res) => {
     const services = await Service.find({
       userId: req.user._id,
-      status: "purchased",
+      status: 'purchased',
     });
 
     // Retrieve payment data for each service
@@ -433,15 +466,19 @@ exports.getUserPurchasedServices = catchError(
           service,
           payment,
         };
-      })
+      }),
     );
 
     res
       .status(200)
       .json(
-        new ApiResponse(200, servicesWithPayments, "All Services with Payments retrieved")
+        new ApiResponse(
+          200,
+          servicesWithPayments,
+          'All Services with Payments retrieved',
+        ),
       );
-  })
+  }),
 );
 
 // Get service by id

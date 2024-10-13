@@ -10,8 +10,6 @@ const {
 const Service = require('../../models/serviceModel');
 const User = require('../../models/userModel');
 
-// Get all invitees of admins (users that role is admin) data taht will be attend the meeting with user(that role is user)
-
 // Validation for creating a meeting
 exports.createMeetingValidation = [
   validateMongoId('userId', 'body'),

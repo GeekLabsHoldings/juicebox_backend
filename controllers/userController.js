@@ -275,7 +275,7 @@ exports.getAllServicesProcess = catchError(
     const userId = req.user._id;
 
     // Find all services for the user
-    const services = await Service.find({ userId });
+    const services = await Service.find({ userId, status: 'purchased' });
 
     if (!services.length) {
       return res.status(404).json(new ApiError('No services found', 404));
