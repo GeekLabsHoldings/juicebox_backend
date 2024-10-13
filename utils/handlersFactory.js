@@ -98,7 +98,7 @@ exports.deleteOne = (Model) =>
   );
 
 exports.getOne = (Model, populationOpt) =>
-  asyncHandler(async (req, res, next) => {
+  catchError(asyncHandler(async (req, res, next) => {
     const { id } = req.params;
     const cacheKey = `${Model.modelName}_${id}`;
 
@@ -121,63 +121,55 @@ exports.getOne = (Model, populationOpt) =>
       `${Model.modelName} retrieved successfully`,
     );
     res.status(response.statusCode).json(response);
-  });
+  }),
+  cacheMiddleware((req) => `${Model.modelName}_${req.params.id}`, 300)
+);
 
 exports.getAll = (Model, searchableFields = []) =>
   catchError(
     asyncHandler(async (req, res) => {
       const page = req.query.page || 1;
+      const cacheKey = `${Model.modelName}_list_page_${page}`;
 
       let filter = {};
       if (req.filterObj) {
         filter = req.filterObj;
       }
 
-      const documentsCounts = await Model.countDocuments();
-      const apiFeatures = new ApiFeatures(Model.find(filter), req.query)
-        .paginate(documentsCounts)
-        .filter()
-        .search(searchableFields)
-        .limitFields()
-        .sort();
+      // Define the query function that retrieves fresh data from the database
+      const queryFn = async () => {
+        const documentsCounts = await Model.countDocuments(filter);
+        const apiFeatures = new ApiFeatures(Model.find(filter), req.query)
+          .paginate(documentsCounts)
+          .filter()
+          .search(searchableFields)
+          .limitFields()
+          .sort();
 
-      const { mongooseQuery, paginationResult } = apiFeatures;
-      const documents = await mongooseQuery;
+        const { mongooseQuery, paginationResult } = apiFeatures;
+        const documents = await mongooseQuery;
+
+        return { documents, paginationResult };
+      };
+
+      // Use lazyRevalidation to get data
+      const { documents, paginationResult } = await lazyRevalidation(
+        cacheKey,
+        queryFn,
+        300,
+      );
+
+      if (!documents) {
+        return next(new ApiError(`No ${Model.modelName} found`, 404));
+      }
 
       const response = new ApiResponse(
         200,
         { results: documents.length, paginationResult, data: documents },
         `${Model.modelName} retrieved successfully`,
       );
+
       res.status(response.statusCode).json(response);
     }),
     cacheMiddleware((req) => `${Model.modelName}_list_${req.query.page}`, 300),
   );
-
-// controllers/productController.js
-// const Product = require('../models/productModel');
-// const asyncHandler = require('express-async-handler');
-// const { lazyRevalidation } = require('../utils/cacheHelper');
-// const ApiError = require('../utils/apiError');
-// const ApiResponse = require('../utils/apiResponse');
-
-// // Example: Get All Products
-// exports.getAllProducts = asyncHandler(async (req, res, next) => {
-//   const page = req.query.page || 1;
-//   const cacheKey = `products_list_page_${page}`;
-
-//   // Define the query function that retrieves fresh data from the database
-//   const queryFn = async () => {
-//     const products = await Product.find().limit(20).skip((page - 1) * 20);
-//     return products;
-//   };
-
-//   const products = await lazyRevalidation(cacheKey, queryFn, 300); // Cache for 5 minutes
-
-//   if (!products) {
-//     return next(new ApiError('No products found', 404));
-//   }
-
-//   const response = new ApiResponse(200, products, 'Products retrieved successfully');
-//   res.status(response.statusCode).json(response);
-// });
