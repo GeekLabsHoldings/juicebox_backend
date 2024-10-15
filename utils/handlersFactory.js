@@ -110,7 +110,7 @@ exports.getOne = (Model, populationOpt) =>
         return await query;
       };
 
-      const document = await lazyRevalidation(cacheKey, queryFn, 300);
+      const document = await lazyRevalidation(cacheKey, queryFn, 120);
 
       if (!document) {
         return next(new ApiError(`No document found for this ID: ${id}`, 404));
@@ -123,7 +123,7 @@ exports.getOne = (Model, populationOpt) =>
       );
       res.status(response.statusCode).json(response);
     }),
-    cacheMiddleware((req) => `${Model.modelName}_${req.params.id}`, 300),
+    cacheMiddleware((req) => `${Model.modelName}_${req.params.id}`, 120),
   );
 
 exports.getAll = (Model, searchableFields = []) =>
@@ -157,7 +157,7 @@ exports.getAll = (Model, searchableFields = []) =>
       const { documents, paginationResult } = await lazyRevalidation(
         cacheKey,
         queryFn,
-        300,
+        120,
       );
 
       if (!documents) {
@@ -172,5 +172,5 @@ exports.getAll = (Model, searchableFields = []) =>
 
       res.status(response.statusCode).json(response);
     }),
-    cacheMiddleware((req) => `${Model.modelName}_list_${req.query.page}`, 300),
+    cacheMiddleware((req) => `${Model.modelName}_list_${req.query.page}`, 120),
   );

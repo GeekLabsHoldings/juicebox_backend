@@ -66,11 +66,11 @@ exports.initializeService = catchError(
 
       // Create 5 initial dummy processes for the service
       const processOptions = [
-        { name: "Initial Consultation", done: false },
-        { name: "Design Process", done: false },
-        { name: "Development Process", done: false },
-        { name: "Testing Process", done: false },
-        { name: "Final Delivery", done: false },
+        { name: 'Initial Consultation', done: false },
+        { name: 'Design Process', done: false },
+        { name: 'Development Process', done: false },
+        { name: 'Testing Process', done: false },
+        { name: 'Final Delivery', done: false },
       ];
       const process = new Process({
         serviceId: service._id,
@@ -244,19 +244,23 @@ exports.linkCreditCard = catchError(
       customer: user.stripeCustomerId,
     });
 
-    // Extract card details
-    const last4 = paymentMethod.card.last4;
-    const expMonth = paymentMethod.card.exp_month;
-    const expYear = paymentMethod.card.exp_year;
-    const expDate = `${expMonth}/${expYear}`;
+    // Check if paymentMethodId already exists in user's linkedCards
+    const isPaymentMethodExists = user.linkedCards.some(
+      (card) => card.stripePaymentMethodId === paymentMethodId,
+    );
 
-    // Save the linked card with card details to the user’s document
+    // Save payment method details only if it doesn't already exist
+    if (isPaymentMethodExists) {
+      throw new ApiError('Payment method already exists', 400);
+    }
+
+    const { last4, exp_month, exp_year } = paymentMethod.card;
     user.linkedCards.push({
-      stripePaymentMethodId: paymentMethod.id,
+      stripePaymentMethodId: paymentMethodId,
       last4: last4,
-      expDate: expDate,
+      expDate: `${exp_month}/${exp_year}`,
     });
-
+    
     await user.save();
 
     // Optionally: Verify the payment method by creating a test charge

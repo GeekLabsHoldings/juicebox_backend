@@ -3,48 +3,54 @@ const createMulterStorage = require('../middlewares/multerFileMiddleware');
 const { DeleteObjectCommand } = require('@aws-sdk/client-s3');
 const ApiError = require('../utils/apiError');
 
-// Unified media handler for upload, update, and delete operations
-const handleMedia = (folder, fieldName, allowedTypes, maxSize) => {
-  const upload = createMulterStorage(folder, allowedTypes, maxSize).single(
-    fieldName,
-  );
+const handleMedia = (folder, allowedTypes, maxSize) => {
+  const upload = createMulterStorage(folder, allowedTypes, maxSize).fields([
+    { name: 'mediaUrl', maxCount: 1 }, // Single file for mediaUrl
+    { name: 'mediaAllUrls', maxCount: 10 }, // Multiple files for mediaAllUrls
+  ]);
 
   return async (req, res, next) => {
     try {
-      // Handle file upload
       upload(req, res, async (err) => {
         if (err) {
           return next(err);
         }
 
-        // If new file uploaded, handle old file deletion for update
-        if (req.file && req.file.location && req.method === 'PUT') {
-          const mediaKey = req.body.s3Key;
-
-          if (mediaKey) {
-            try {
-              await s3.send(
-                new DeleteObjectCommand({
-                  Bucket: process.env.AWS_BUCKET_NAME,
-                  Key: mediaKey,
-                }),
-              );
-            } catch (deleteErr) {
-              console.error('Error deleting old media:', deleteErr);
-              return next(new ApiError('Failed to delete old media', 500));
-            }
-          }
-
-          // Add the new file's URL and S3 key to the request body
-          req.body[fieldName] = req.file.location;
-          req.body.s3Key = req.file.key; // Store the new S3 key
+        // Handle single mediaUrl upload for blog
+        if (req.files && req.files['mediaUrl']) {
+          // Store new file location and key for the blog
+          req.body.mediaUrl = req.files['mediaUrl'][0].location;
+          req.body.s3Key = req.files['mediaUrl'][0].key;
         }
 
-        // For create, add the media URL and S3 key to the request body
-        if (req.file && req.file.location && req.method === 'POST') {
-          req.body[fieldName] = req.file.location;
-          req.body.s3Key = req.file.key; // Store the new S3 key
+        // Handle multiple mediaAllUrls uploads for blog
+        if (req.files && req.files['mediaAllUrls']) {
+          req.body.mediaAllUrls = req.files['mediaAllUrls'].map(file => file.location);
+          req.body.s3AllKeys = req.files['mediaAllUrls'].map(file => file.key);
         }
+
+        // // If updating and a new file is uploaded, delete the old blog image (if exists)
+        // if (req.method === 'PUT') {
+        //   const oldS3Key = req.body.s3Key; 
+
+        //   if (oldS3Key) {
+        //     try {
+        //       // Delete the old blog image from S3
+        //       await s3.send(
+        //         new DeleteObjectCommand({
+        //           Bucket: process.env.AWS_BUCKET_NAME,
+        //           Key: oldS3Key,
+        //         })
+        //       );
+        //       console.log(`Old blog image ${oldS3Key} deleted successfully`);
+        //     } catch (deleteErr) {
+        //       console.error('Error deleting old blog image:', deleteErr);
+        //       return next(new ApiError('Failed to delete old blog image', 500));
+        //     }
+        //   }
+        //   // update the s3Key in the request body
+        //   req.body.s3Key = req.body.s3Key;
+        // }
 
         next();
       });
@@ -54,27 +60,42 @@ const handleMedia = (folder, fieldName, allowedTypes, maxSize) => {
   };
 };
 
-// Middleware for delete operation
-const deleteMedia = (folder, fieldName) => {
+const deleteMedia = () => {
   return async (req, res, next) => {
     try {
-      const mediaKey = req.body.s3Key;
-      if (mediaKey) {
-        try {
-          await s3.send(
-            new DeleteObjectCommand({
-              Bucket: process.env.AWS_BUCKET_NAME,
-              Key: mediaKey,
-            }),
-          );
-          console.log(`Media file ${mediaKey} deleted successfully`);
-        } catch (deleteErr) {
-          console.error('Error deleting media from S3:', deleteErr);
-          return next(new ApiError('Failed to delete media from storage', 500));
-        }
+      // Parse media keys from request body, or set an empty array if no keys are provided
+      const mediaKeys = req.body.s3Key ? JSON.parse(req.body.s3Key) : [];
+
+      if (mediaKeys.length) {
+        // Use Promise.all to delete all keys in parallel
+        await Promise.all(
+          mediaKeys.map(async (key) => {
+            if (key) {
+              try {
+                await s3.send(
+                  new DeleteObjectCommand({
+                    Bucket: process.env.AWS_BUCKET_NAME,
+                    Key: key,
+                  })
+                );
+                console.log(`Media file ${key} deleted successfully`);
+              } catch (deleteErr) {
+                console.error(`Error deleting media file ${key}:`, deleteErr);
+                return next(new ApiError('Failed to delete media from storage', 500));
+              }
+            } else {
+              console.warn('No valid key found for deletion');
+            }
+          })
+        );
+      } else {
+        console.warn('No media keys provided for deletion');
       }
+      
+      // Proceed to the next middleware, e.g., deleteBlog
       next();
     } catch (err) {
+      // Catch any general errors and forward them
       next(err);
     }
   };

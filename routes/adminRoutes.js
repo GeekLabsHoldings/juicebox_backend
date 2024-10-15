@@ -55,11 +55,11 @@ router.put('/update-meeting/:id', updateMeetingValidation, updateMeeting);
 router.delete('/delete-meeting/:id', deleteMeeting);
 router.delete('/delete-vacancy/:id', deleteVacancy);
 router.get('/get-all-careers-for-vacancy', getAllCareersForVacancy);
+
 router.post(
   '/create-blog',
   handleMedia(
     'blogs',
-    'mediaUrl',
     [
       'image/jpeg',
       'image/png',
@@ -76,11 +76,11 @@ router.post(
   blogValidationRules,
   createBlog,
 );
+
 router.put(
   '/update-blog/:id',
   handleMedia(
     'blogs',
-    'mediaUrl',
     [
       'image/jpeg',
       'image/png',
@@ -96,7 +96,8 @@ router.put(
   ),
   updateBlog,
 );
-router.delete('/delete-blog/:id', deleteMedia('blogs', 'mediaUrl'), deleteBlog);
+
+router.delete('/delete-blog/:id', deleteMedia(), deleteBlog);
 router.delete('/delete-all-rejected-careers', deleteAllRejectedCareers);
 
 module.exports = router;
