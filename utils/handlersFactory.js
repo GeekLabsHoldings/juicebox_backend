@@ -5,12 +5,18 @@ const ApiFeatures = require('./apiFeatures');
 const { catchError } = require('../middlewares/catchErrorMiddleware');
 const { withTransaction } = require('../helpers/transactionHelper');
 const redisClient = require('../config/redis');
-const cacheMiddleware = require('../middlewares/cachingMiddleware');
 const lazyRevalidation = require('../helpers/cacheHelper');
 
-const invalidateCache = async (key) => {
+const invalidateCache = async (pattern) => {
   try {
-    await redisClient.del(key);
+    const stream = redisClient.scanStream({ match: pattern });
+    stream.on('data', (keys) => {
+      if (keys.length) {
+        const pipeline = redisClient.pipeline();
+        keys.forEach((key) => pipeline.del(key));
+        pipeline.exec();
+      }
+    });
   } catch (error) {
     console.error('Error invalidating cache:', error);
   }
@@ -24,8 +30,8 @@ exports.createOne = (Model) =>
         newDoc = await Model.create([{ ...req.body }], { session });
       });
 
-      // Invalidate relevant cache
-      await invalidateCache(`${Model.modelName}_list`);
+      // Invalidate or update the cache
+      await invalidateCache(`${Model.modelName}_list_*`);
 
       const response = new ApiResponse(
         201,
@@ -40,8 +46,8 @@ exports.updateOne = (Model) =>
   catchError(
     asyncHandler(async (req, res, next) => {
       const { id } = req.params;
-      let document;
 
+      let document;
       await withTransaction(async (session) => {
         document = await Model.findByIdAndUpdate(id, req.body, {
           new: true,
@@ -54,9 +60,10 @@ exports.updateOne = (Model) =>
           );
         }
 
-        // Invalidate relevant cache
-        await invalidateCache(`${Model.modelName}_${id}`);
-        await invalidateCache(`${Model.modelName}_list`);
+        // Update cache
+        const cacheKey = `${Model.modelName}_${id}`;
+        await redisClient.set(cacheKey, JSON.stringify(document), { EX: 120 });
+        await invalidateCache(`${Model.modelName}_list_*`);
 
         const response = new ApiResponse(
           200,
@@ -83,9 +90,9 @@ exports.deleteOne = (Model) =>
           );
         }
 
-        // Invalidate relevant cache
+        // Invalidate the cache
         await invalidateCache(`${Model.modelName}_${id}`);
-        await invalidateCache(`${Model.modelName}_list`);
+        await invalidateCache(`${Model.modelName}_list_*`);
 
         const response = new ApiResponse(
           204,
@@ -103,7 +110,6 @@ exports.getOne = (Model, populationOpt) =>
       const { id } = req.params;
       const cacheKey = `${Model.modelName}_${id}`;
 
-      // Define the query function that retrieves fresh data from the database
       const queryFn = async () => {
         let query = Model.findById(id);
         if (populationOpt) query = query.populate(populationOpt);
@@ -123,7 +129,6 @@ exports.getOne = (Model, populationOpt) =>
       );
       res.status(response.statusCode).json(response);
     }),
-    cacheMiddleware((req) => `${Model.modelName}_${req.params.id}`, 120),
   );
 
 exports.getAll = (Model, searchableFields = []) =>
@@ -132,12 +137,8 @@ exports.getAll = (Model, searchableFields = []) =>
       const page = req.query.page || 1;
       const cacheKey = `${Model.modelName}_list_page_${page}`;
 
-      let filter = {};
-      if (req.filterObj) {
-        filter = req.filterObj;
-      }
+      let filter = req.filterObj || {};
 
-      // Define the query function that retrieves fresh data from the database
       const queryFn = async () => {
         const documentsCounts = await Model.countDocuments(filter);
         const apiFeatures = new ApiFeatures(Model.find(filter), req.query)
@@ -149,11 +150,9 @@ exports.getAll = (Model, searchableFields = []) =>
 
         const { mongooseQuery, paginationResult } = apiFeatures;
         const documents = await mongooseQuery;
-
         return { documents, paginationResult };
       };
 
-      // Use lazyRevalidation to get data
       const { documents, paginationResult } = await lazyRevalidation(
         cacheKey,
         queryFn,
@@ -172,5 +171,4 @@ exports.getAll = (Model, searchableFields = []) =>
 
       res.status(response.statusCode).json(response);
     }),
-    cacheMiddleware((req) => `${Model.modelName}_list_${req.query.page}`, 120),
   );

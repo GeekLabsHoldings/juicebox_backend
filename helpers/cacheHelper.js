@@ -5,7 +5,6 @@ const lazyRevalidation = async (key, queryFn, ttl = 3600) => {
     const cachedData = await redisClient.get(key);
 
     if (cachedData) {
-      // Return cached data and revalidate asynchronously
       setTimeout(async () => {
         try {
           const freshData = await queryFn();
@@ -18,7 +17,6 @@ const lazyRevalidation = async (key, queryFn, ttl = 3600) => {
       return JSON.parse(cachedData);
     }
 
-    // If no cache exists, query fresh data
     const freshData = await queryFn();
     await redisClient.set(key, JSON.stringify(freshData), { EX: ttl });
     return freshData;
