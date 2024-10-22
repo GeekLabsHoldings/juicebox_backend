@@ -4,7 +4,6 @@ const Vacancy = require("../models/vacanciesModel");
 const Career = require("../models/careersModel");
 const ApiError = require("../utils/apiError");
 const ApiResponse = require('../utils/apiResponse');
-const capitalizeFirstLetter = require("../helpers/capitalizeFirstLetter");
 
 // Get all vacancies
 exports.getAllVacancies = catchError(
@@ -41,7 +40,6 @@ exports.postCareer = catchError(
     if (vacancy.status === 'closed') {
       throw new ApiError('Cannot apply for a closed vacancy', 400);
     }
-
 
     // Create new career entry
     const newCareer = new Career({
