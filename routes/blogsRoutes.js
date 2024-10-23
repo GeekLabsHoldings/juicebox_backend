@@ -7,7 +7,7 @@ const cacheMiddleware = require('../middlewares/cachingMiddleware');
 
 const router = express.Router();
 
-router.get("/get-blog/:id", cacheMiddleware((req) => `blog_${req.params.id}`, 120), getBlog);
-router.get("/get-all-blogs", cacheMiddleware(() => 'all_blogs', 120), getAllBlogs);
+router.get("/get-blog/:id", cacheMiddleware((req) => `blog_${req.params.id}`, 86400), getBlog);
+router.get("/get-all-blogs", cacheMiddleware(() => 'all_blogs', 86400), getAllBlogs);
 
 module.exports = router;
