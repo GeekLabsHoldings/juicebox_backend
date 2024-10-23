@@ -436,8 +436,8 @@ exports.validateDomain = catchError(
         res.status(200).json(new ApiResponse(200, result, 'Domain available'));
       } else {
         res
-          .status(400)
-          .json(new ApiResponse(400, result, 'Domain not available'));
+          .status(200)
+          .json(new ApiResponse(200, result, 'Domain not available'));
       }
     } catch (error) {
       if (error.message.startsWith('The TLD')) {
