@@ -420,35 +420,31 @@ exports.purchaseService = catchError(
   }),
 );
 
-// Validate domain
-exports.validateDomain = catchError(
-  asyncHandler(async (req, res) => {
-    const { domain } = req.body;
+// check domain availability endpoint
+exports.validateDomain = async (req, res, next) => {
+  const { domain } = req.body;
 
-    if (!domain) {
-      throw new ApiError('Domain is required', 400);
+  if (!domain) {
+    return res.status(400).json({ success: false, message: 'Domain is required' });
+  }
+
+  try {
+    const result = await checkDomainExists(domain);
+
+    if (result.available) {
+      res.status(200).json(new ApiResponse(200, result, 'Domain available'));
+    } else {
+      res.status(200).json(new ApiResponse(200, result, 'Domain not available'));
     }
-
-    try {
-      const result = await checkDomainExists(domain);
-
-      if (result.available) {
-        res.status(200).json(new ApiResponse(200, result, 'Domain available'));
-      } else {
-        res
-          .status(200)
-          .json(new ApiResponse(200, result, 'Domain not available'));
-      }
-    } catch (error) {
-      if (error.message.startsWith('The TLD')) {
-        res.status(400).send({ success: false, message: error.message });
-      } else {
-        console.error('Error checking domain availability:', error);
-        throw new ApiError('Error checking domain availability', 500);
-      }
+  } catch (error) {
+    if (error.message.startsWith('The TLD')) {
+      res.status(400).json({ success: false, message: error.message });
+    } else {
+      console.error('Error checking domain availability:', error);
+      res.status(500).json({ success: false, message: 'Error checking domain availability' });
     }
-  }),
-);
+  }
+};
 
 // get all ser that user has purchased
 exports.getUserPurchasedServices = catchError(

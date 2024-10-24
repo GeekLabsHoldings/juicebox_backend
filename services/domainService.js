@@ -5,14 +5,48 @@ const {
 } = require('@aws-sdk/client-route-53-domains');
 const { route53 } = require('../config/awsConfig');
 
-const tldPriceCache = new Map();
-const domainAvailabilityCache = new Map();
+// Cache settings
+const CACHE_TTL_MS = 2 * 60 * 1000; // 2 minutes cache expiration
 
+// Cache data with expiration
+class ExpiringCache {
+  constructor() {
+    this.cache = new Map();
+  }
+
+  set(key, value, ttl) {
+    const expiresAt = Date.now() + ttl;
+    this.cache.set(key, { value, expiresAt });
+
+    // Automatically remove the key after TTL
+    setTimeout(() => this.cache.delete(key), ttl);
+  }
+
+  get(key) {
+    const cachedEntry = this.cache.get(key);
+    if (cachedEntry && cachedEntry.expiresAt > Date.now()) {
+      return cachedEntry.value;
+    }
+    this.cache.delete(key);
+    return null;
+  }
+
+  has(key) {
+    return this.get(key) !== null;
+  }
+}
+
+// Instantiate caches with expiration
+const tldPriceCache = new ExpiringCache();
+const domainAvailabilityCache = new ExpiringCache();
+
+// Utility function to get TLD from domain
 function getTLD(domain) {
   const domainParts = domain.split('.');
   return domainParts.pop();
 }
 
+// Fetch the price for a given TLD
 async function getDomainPrice(tld) {
   if (tldPriceCache.has(tld)) {
     return tldPriceCache.get(tld);
@@ -23,12 +57,14 @@ async function getDomainPrice(tld) {
     const pricesResponse = await route53.send(pricesCommand);
     const priceInfo = pricesResponse.Prices[0];
 
+    if (!priceInfo) throw new Error(`No prices found for TLD: ${tld}`);
+
     const priceData = {
       registrationPrice: priceInfo.RegistrationPrice,
       renewalPrice: priceInfo.RenewalPrice,
     };
 
-    tldPriceCache.set(tld, priceData);
+    tldPriceCache.set(tld, priceData, CACHE_TTL_MS);
     return priceData;
   } catch (error) {
     console.error(`Error fetching prices for .${tld}:`, error);
@@ -36,6 +72,48 @@ async function getDomainPrice(tld) {
   }
 }
 
+// Check if the domain exists
+async function checkDomainAvailability(domain) {
+  try {
+    const availabilityCommand = new CheckDomainAvailabilityCommand({
+      DomainName: domain,
+    });
+    const availabilityResponse = await route53.send(availabilityCommand);
+    return availabilityResponse.Availability === 'AVAILABLE';
+  } catch (error) {
+    console.error(`Error checking domain availability for ${domain}:`, error);
+    throw error;
+  }
+}
+
+// Get domain suggestions with prices
+async function getDomainSuggestions(domain) {
+  try {
+    const suggestionsCommand = new GetDomainSuggestionsCommand({
+      DomainName: domain,
+      OnlyAvailable: true,
+      SuggestionCount: 20,
+    });
+    const suggestionsResponse = await route53.send(suggestionsCommand);
+
+    const suggestionsWithPrices = await Promise.allSettled(
+      (suggestionsResponse.SuggestionsList || []).map(async (suggestion) => {
+        const suggestionTLD = getTLD(suggestion.DomainName);
+        const prices = await getDomainPrice(suggestionTLD);
+        return { DomainName: suggestion.DomainName, prices };
+      })
+    );
+
+    return suggestionsWithPrices
+      .filter(({ status }) => status === 'fulfilled')
+      .map(({ value }) => value);
+  } catch (error) {
+    console.error('Error fetching domain suggestions:', error);
+    throw error;
+  }
+}
+
+// Main function to check domain availability and return suggestions if unavailable
 async function checkDomainExists(domain) {
   const domainTLD = getTLD(domain);
 
@@ -45,48 +123,31 @@ async function checkDomainExists(domain) {
   }
 
   try {
-    const availabilityCommand = new CheckDomainAvailabilityCommand({
-      DomainName: domain,
-    });
-    const availabilityResponse = await route53.send(availabilityCommand);
+    const isAvailable = await checkDomainAvailability(domain);
 
-    let result;
-
-    if (availabilityResponse.Availability === 'AVAILABLE') {
+    if (isAvailable) {
       const prices = await getDomainPrice(domainTLD);
-      result = {
+      const result = {
         available: true,
         prices,
         message: `Domain ${domain} is available`,
       };
-    } else {
-      const suggestionsCommand = new GetDomainSuggestionsCommand({
-        DomainName: domain,
-        OnlyAvailable: true,
-        SuggestionCount: 20,
-      });
-      const suggestionsResponse = await route53.send(suggestionsCommand);
 
-      const suggestionsWithPrices = await Promise.allSettled(
-        (suggestionsResponse.SuggestionsList || []).map(async (suggestion) => {
-          const suggestionTLD = getTLD(suggestion.DomainName);
-          const prices = await getDomainPrice(suggestionTLD);
-          return { DomainName: suggestion.DomainName, prices };
-        }),
-      );
-
-      result = {
-        available: false,
-        suggestions: suggestionsWithPrices
-          .filter(({ status }) => status === 'fulfilled')
-          .map(({ value }) => value),
-      };
+      domainAvailabilityCache.set(domain, result, CACHE_TTL_MS);
+      return result;
     }
 
-    domainAvailabilityCache.set(domain, result);
+    const suggestions = await getDomainSuggestions(domain);
+
+    const result = {
+      available: false,
+      suggestions,
+    };
+
+    domainAvailabilityCache.set(domain, result, CACHE_TTL_MS);
     return result;
   } catch (error) {
-    console.error('Error checking domain availability:', error);
+    console.error('Error checking domain existence:', error);
     throw error;
   }
 }
