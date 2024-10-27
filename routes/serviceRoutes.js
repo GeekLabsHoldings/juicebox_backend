@@ -10,7 +10,8 @@ const {
   getUserPurchasedServices,
   getService,
   scheduleCall,
-  // createPaymentMethod,
+  cancelPurchasedService,
+  cancelSubscription,
 } = require("../controllers/servicesController.js");
 const upload = require('../middlewares/uploadMiddleware');
 
@@ -32,16 +33,7 @@ router.post("/validate-domain", validateDomain);
 router.get("/get-purchased-services", getUserPurchasedServices);
 router.get("/get-service/:id", getService);
 router.post("/schedule-call", scheduleCall);
-
-// Route for successful payment
-router.get('/api/v1/services/:serviceId/success', (req, res) => {
-  const paymentIntentId = req.query.paymentIntentId;
-  // Fetch payment intent details from Stripe if necessary
-  res.status(200).json({
-    status: 'success',
-    message: 'Payment succeeded',
-    paymentIntentId,
-  });
-});
+router.post("/cancel-purchased-service", cancelPurchasedService);
+router.post("/cancel-subscription", cancelSubscription);
 
 module.exports = router;
