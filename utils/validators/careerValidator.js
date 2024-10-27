@@ -6,9 +6,8 @@ exports.careerValidationRules = [
   body("vacancyId").isMongoId().withMessage("Invalid vacancy ID"),
   body("name")
     .notEmpty()
-    .withMessage("Name is required")
-    .isAlpha()
-    .withMessage("Name must contain only letters"),
+    .withMessage("Name is required"),
+    
   body("email").isEmail().withMessage("Invalid email address"),
   body("phoneNumber")
     .optional()
