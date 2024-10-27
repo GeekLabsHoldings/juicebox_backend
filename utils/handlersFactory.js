@@ -7,16 +7,24 @@ const { withTransaction } = require('../helpers/transactionHelper');
 const redisClient = require('../config/redis');
 const lazyRevalidation = require('../helpers/cacheHelper');
 
-const invalidateCache = async (pattern) => {
+// const invalidateCache = async (pattern) => {
+//   try {
+//     const stream = redisClient.scanStream({ match: pattern });
+//     stream.on('data', (keys) => {
+//       if (keys.length) {
+//         const pipeline = redisClient.pipeline();
+//         keys.forEach((key) => pipeline.del(key));
+//         pipeline.exec();
+//       }
+//     });
+//   } catch (error) {
+//     console.error('Error invalidating cache:', error);
+//   }
+// };
+
+const invalidateCache = async (key) => {
   try {
-    const stream = redisClient.scanStream({ match: pattern });
-    stream.on('data', (keys) => {
-      if (keys.length) {
-        const pipeline = redisClient.pipeline();
-        keys.forEach((key) => pipeline.del(key));
-        pipeline.exec();
-      }
-    });
+    await redisClient.del(key);
   } catch (error) {
     console.error('Error invalidating cache:', error);
   }

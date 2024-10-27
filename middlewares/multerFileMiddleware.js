@@ -29,7 +29,10 @@ const createMulterStorage = (folder, allowedTypes, maxSize) => {
       const uniqueFilename = `${uuidv4()}-${Date.now()}${ext}`;
       cb(null, `${folder}/${uniqueFilename}`);
     },
-    acl: 'public-read-write',
+    contentType: (req, file, cb) => {
+      cb(null, file.mimetype);
+    },
+    acl: 'public-read',
   });
 
   return multer({

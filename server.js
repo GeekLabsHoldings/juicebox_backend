@@ -125,7 +125,8 @@ const server = app.listen(PORT, async () => {
           Bucket: process.env.AWS_BUCKET_NAME,
           Key: `avatars/${Date.now().toString()}_admin_avatar.jpg`,
           Body: fs.createReadStream(avatarFilePath),
-          ACL: 'public-read-write',
+          ContentType: 'image/jpeg',
+          ACL: 'public-read',
         }),
       );
 
