@@ -11,10 +11,16 @@ const createMulterStorage = (folder, allowedTypes, maxSize) => {
     const fileExtension = path.extname(file.originalname).toLowerCase();
     const mimeType = file.mimetype;
 
-    if (allowedTypes.includes(mimeType) && allowedTypes.includes(fileExtension)) {
+    if (
+      allowedTypes.includes(mimeType) &&
+      allowedTypes.includes(fileExtension)
+    ) {
       cb(null, true);
     } else {
-      cb(new ApiError(`Only ${allowedTypes.join(', ')} files are allowed`, 400), false);
+      cb(
+        new ApiError(`Only ${allowedTypes.join(', ')} files are allowed`, 400),
+        false,
+      );
     }
   };
 
@@ -30,12 +36,14 @@ const createMulterStorage = (folder, allowedTypes, maxSize) => {
       cb(null, `${folder}/${uniqueFilename}`);
     },
     acl: 'public-read-write',
+    contentDisposition: 'inline',
+    contentType: file.mimetype,
   });
 
   return multer({
     storage: storage,
     fileFilter: fileFilter,
-    limits: { fileSize: maxSize }, // Maximum file size in bytes
+    limits: { fileSize: maxSize },
   });
 };
 
@@ -90,4 +98,3 @@ module.exports = createMulterStorage;
 // };
 
 // module.exports = createMulterStorage;
-
