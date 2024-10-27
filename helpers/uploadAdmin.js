@@ -6,9 +6,7 @@ const upload = multer({
   storage: multerS3({
     s3,
     bucket: process.env.AWS_BUCKET_NAME,
-    acl: 'public-read',
-    contentDisposition: 'inline', // Ensures the file is displayed inline
-    contentType: (req, file) => file.mimetype, // Set the correct MIME type
+    acl: 'public-read-write',
     key: (req, file, cb) => {
       cb(null, `avatars/${Date.now().toString()}_${file.originalname}`);
     },
