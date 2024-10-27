@@ -420,6 +420,99 @@ exports.purchaseService = catchError(
   }),
 );
 
+// cancel subscription endpoint
+exports.cancelSubscription = async (req, res, next) => {
+  const { paymentId } = req.body;
+
+  if (!paymentId) {
+    return res.status(400).json({ success: false, message: 'PaymentId is required' });
+  }
+
+  try {
+    const payment = await Payment.findById(paymentId);
+    if (!payment) {
+      return res.status(404).json({ success: false, message: 'Payment not found' });
+    }
+
+    if (payment.status === 'canceled') {
+      return res.status(400).json({ success: false, message: 'Payment already canceled' });
+    }
+
+    const service = await Service.findById(payment.serviceId);
+    if (!service) {
+      return res.status(404).json({ success: false, message: 'Service not found' });
+    }
+
+    const user = await User.findById(payment.userId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const stripePaymentIntentId = payment.stripePaymentIntentId;
+
+    if (!stripePaymentIntentId) {
+      return res.status(400).json({ success: false, message: 'Stripe Payment Intent ID not found' });
+    }
+
+    // Cancel the payment intent
+    await stripe.paymentIntents.cancel(stripePaymentIntentId, {
+      payment_method: user.linkedCards[0].stripePaymentMethodId,
+    });
+
+    payment.status = 'canceled';
+    await payment.save();
+
+    res.status(200).json({ success: true, message: 'Payment canceled successfully' });
+  } catch (error) {
+    console.error('Error canceling payment:', error);
+    res.status(500).json({ success: false, message: 'Error canceling payment' });
+  }
+};
+
+// cancel purchased service and refund
+exports.cancelPurchasedService = async (req, res, next) => {
+  const { paymentId } = req.body;
+
+  if (!paymentId) {
+    return res.status(400).json({ success: false, message: 'PaymentId is required' });
+  }
+
+  try {
+    const payment = await Payment.findById(paymentId);
+    if (!payment) {
+      return res.status(404).json({ success: false, message: 'Payment not found' });
+    }
+
+    if (payment.status === 'canceled') {
+      return res.status(400).json({ success: false, message: 'Payment already canceled' });
+    }
+
+    const service = await Service.findById(payment.serviceId);
+    if (!service) {
+      return res.status(404).json({ success: false, message: 'Service not found' });
+    }
+
+    const user = await User.findById(payment.userId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    // Refund the payment
+    await stripe.refunds.create({
+      payment_intent: payment.stripePaymentIntentId,
+      amount: payment.amount * 100,
+    });
+
+    payment.status = 'canceled';
+    await payment.save();
+
+    res.status(200).json({ success: true, message: 'Payment canceled successfully' });
+  } catch (error) {
+    console.error('Error canceling payment:', error);
+    res.status(500).json({ success: false, message: 'Error canceling payment' });
+  }
+};
+
 // check domain availability endpoint
 exports.validateDomain = async (req, res, next) => {
   const { domain } = req.body;
