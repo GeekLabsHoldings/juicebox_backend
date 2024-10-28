@@ -1,11 +1,11 @@
-const mongoose = require("mongoose");
-const bcrypt = require("bcryptjs");
-const cron = require("node-cron");
+const mongoose = require('mongoose');
+const bcrypt = require('bcryptjs');
+const cron = require('node-cron');
 
 const notificationSchema = new mongoose.Schema({
   serviceId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: "Service",
+    ref: 'Service',
   },
   seen: {
     type: Boolean,
@@ -17,20 +17,20 @@ const userSchema = new mongoose.Schema(
   {
     firstName: {
       type: String,
-      minlength: [2, "First name must be at least 2 characters long"],
-      maxlength: [50, "First name must be less than 50 characters long"],
+      minlength: [2, 'First name must be at least 2 characters long'],
+      maxlength: [50, 'First name must be less than 50 characters long'],
       trim: true,
       index: true, // Indexing first name for faster lookups
     },
     lastName: {
       type: String,
-      minlength: [2, "Last name must be at least 2 characters long"],
-      maxlength: [50, "Last name must be less than 50 characters long"],
+      minlength: [2, 'Last name must be at least 2 characters long'],
+      maxlength: [50, 'Last name must be less than 50 characters long'],
       trim: true,
     },
     email: {
       type: String,
-      required: [true, "Email is required"],
+      required: [true, 'Email is required'],
       unique: true,
       lowercase: true, // Ensure email is always stored in lowercase
       trim: true,
@@ -52,8 +52,8 @@ const userSchema = new mongoose.Schema(
     },
     role: {
       type: String,
-      enum: ["user", "admin"],
-      default: "user",
+      enum: ['user', 'admin'],
+      default: 'user',
       index: true, // Index role for faster queries based on user roles
     },
     DOB: {
@@ -66,33 +66,33 @@ const userSchema = new mongoose.Schema(
     },
     country: {
       type: String,
-      minlength: [2, "Country must be at least 2 characters long"],
-      maxlength: [50, "Country must be less than 50 characters long"],
+      minlength: [2, 'Country must be at least 2 characters long'],
+      maxlength: [50, 'Country must be less than 50 characters long'],
       trim: true,
     },
     address: {
       type: String,
-      minlength: [2, "Address must be at least 2 characters long"],
-      maxlength: [100, "Address name must be less than 100 characters long"],
+      minlength: [2, 'Address must be at least 2 characters long'],
+      maxlength: [100, 'Address name must be less than 100 characters long'],
       trim: true,
     },
     city: {
       type: String,
-      minlength: [2, "City must be at least 2 characters long"],
-      maxlength: [50, "City must be less than 50 characters long"],
+      minlength: [2, 'City must be at least 2 characters long'],
+      maxlength: [50, 'City must be less than 50 characters long'],
       trim: true,
       index: true, // Index city for location-based queries
     },
     org: {
       type: String,
-      minlength: [2, "Org must be at least 2 characters long"],
-      maxlength: [50, "Org must be less than 50 characters long"],
+      minlength: [2, 'Org must be at least 2 characters long'],
+      maxlength: [50, 'Org must be less than 50 characters long'],
       trim: true,
     },
     position: {
       type: String,
-      minlength: [2, "Position must be at least 2 characters long"],
-      maxlength: [50, "Position must be less than 50 characters long"],
+      minlength: [2, 'Position must be at least 2 characters long'],
+      maxlength: [50, 'Position must be less than 50 characters long'],
       trim: true,
     },
     active: {
@@ -131,29 +131,31 @@ const userSchema = new mongoose.Schema(
       type: String,
       index: true, // Indexing for quick lookup with Stripe
     },
-    linkedCards: [{
-      stripePaymentMethodId: { type: String, index: true },  
-      last4: { type: String },
-      expDate: { type: String },
-    }],
+    linkedCards: [
+      {
+        stripePaymentMethodId: { type: String, index: true },
+        last4: { type: String },
+        expDate: { type: String },
+      },
+    ],
     balance: {
       type: Number,
       default: 0,
     },
     currency: {
       type: String,
-      default: "USD",
+      default: 'USD',
     },
     notifications: [notificationSchema],
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 // Password hashing middleware
-userSchema.pre("save", async function (next) {
-  if (!this.isModified("password")) return next();
+userSchema.pre('save', async function (next) {
+  if (!this.isModified('password')) return next();
   this.password = await bcrypt.hash(this.password, 12);
   next();
 });
@@ -169,7 +171,7 @@ userSchema.pre("save", async function (next) {
 //       verifyEmail: false,
 //       createdAt: { $lte: thirtyMinutesAgo },
 //     });
-    
+
 //     if (result.deletedCount > 0) {
 //       console.log(`Removed ${result.deletedCount} unverified users.`);
 //     } else {
@@ -181,7 +183,8 @@ userSchema.pre("save", async function (next) {
 // };
 
 // two weekly cron job to remove unverified users
-cron.schedule("0 0 * * *", async () => {
+// cron.schedule("0 0 * * *", async () => {
+cron.schedule('0 0 1,15 * *', async () => {
   const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
 
   try {
@@ -193,10 +196,10 @@ cron.schedule("0 0 * * *", async () => {
       console.log(`Removed ${result.deletedCount} unverified users.`);
     }
   } catch (error) {
-    console.error("Error removing unverified users:", error);
+    console.error('Error removing unverified users:', error);
   }
 });
 
-const User = mongoose.model("User", userSchema);
+const User = mongoose.model('User', userSchema);
 
 module.exports = User;
