@@ -110,22 +110,7 @@ exports.addNewVacancy = factory.createOne(Vacancy);
 exports.updateVacancy = factory.updateOne(Vacancy);
 
 // delete vacancy
-exports.deleteVacancy = catchError(
-  asyncHandler(async (req, res) => {
-    const { id } = req.params;
-
-    // Fetch the service by ID
-    const vacancy = await Vacancy.findById(id);
-
-    if (!vacancy) {
-      throw new ApiError('Vacancy not found', 404);
-    }
-
-    await Vacancy.findByIdAndDelete(id);
-
-    res.status(204).json(new ApiResponse(204, vacancy, 'Vacancy deleted'));
-  }),
-);
+exports.deleteVacancy = factory.deleteOne(Vacancy);
 
 // get all careers for vacancy by id
 exports.getAllCareersForVacancy = catchError(
