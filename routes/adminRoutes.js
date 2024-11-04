@@ -34,6 +34,7 @@ const {
 } = require('../utils/validators/adminValidator');
 const {
   vacancyValidationRules,
+  updateVacancyValidationRules,
 } = require('../utils/validators/careerValidator');
 const { blogValidationRules } = require('../utils/validators/blogValidator');
 const { handleMedia, deleteMedia } = require('../helpers/mediaHandler');
@@ -56,7 +57,7 @@ router.put('/update-process-service/:id', updateProcessValidation, updateProcess
 router.get('/get-all-users', getAllUsers);
 router.post('/notify-user', notifyUser);
 router.post('/add-new-vacancy', vacancyValidationRules, addNewVacancy);
-router.put('/update-vacancy/:id', updateVacancy);
+router.put('/update-vacancy/:id', updateVacancyValidationRules, updateVacancy);
 router.post('/create-meeting', createMeetingValidation, createMeeting);
 router.put('/update-meeting/:id', updateMeetingValidation, updateMeeting);
 router.delete('/delete-meeting/:id', deleteMeeting);

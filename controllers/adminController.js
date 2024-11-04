@@ -104,57 +104,10 @@ exports.updateService = catchError(
 );
 
 // Add new vacancy
-exports.addNewVacancy = catchError(
-  asyncHandler(async (req, res) => {
-    const {
-      title,
-      description,
-      benefits,
-      requirements,
-      responsibilities,
-      status,
-    } = req.body;
-
-    const newVacancy = new Vacancy({
-      title,
-      description,
-      benefits,
-      requirements,
-      responsibilities,
-      status,
-    });
-
-    await newVacancy.save();
-
-    res.status(201).json(new ApiResponse(201, newVacancy, 'Vacancy created'));
-  }),
-);
+exports.addNewVacancy = factory.createOne(Vacancy);
 
 // Update vacancy
-exports.updateVacancy = catchError(
-  asyncHandler(async (req, res) => {
-    const { id } = req.params; 
-    const updates = req.body;
-
-    // Fetch the vacancy by ID
-    const vacancy = await Vacancy.findById(id);
-
-    if (!vacancy) {
-      throw new ApiError('Vacancy not found', 404);
-    }
-
-    // Update the vacancy
-    const updatedVacancy = await Vacancy.findByIdAndUpdate(
-      id,
-      { ...updates },
-      { new: true },
-    );
-
-    res
-      .status(200)
-      .json(new ApiResponse(200, updatedVacancy, 'Vacancy updated'));
-  }),
-);
+exports.updateVacancy = factory.updateOne(Vacancy);
 
 // delete vacancy
 exports.deleteVacancy = catchError(

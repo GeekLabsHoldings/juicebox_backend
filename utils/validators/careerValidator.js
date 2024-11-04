@@ -56,3 +56,36 @@ exports.vacancyValidationRules = [
 
   validatorMiddleware,  
 ];
+
+exports.updateVacancyValidationRules = [
+  body("title")
+    .optional()
+    .isLength({ min: 10 })
+    .withMessage("Title must be at least 10 characters long"),
+  body("description")
+    .optional()
+    .isLength({ min: 50 })
+    .withMessage("Description must be at least 50 characters long"),
+
+  body("requirements")
+    .optional()
+    .isLength({ min: 50 })
+    .withMessage("Requirements must be at least 50 characters long"),
+
+  body("benefits")
+    .optional()
+    .isLength({ min: 50 })
+    .withMessage("Benefits must be at least 50 characters long"),
+
+  body("responsibilities")
+    .optional()
+    .isLength({ min: 50 })
+    .withMessage("Responsibilities must be at least 50 characters long"),
+
+  body("status")
+    .optional()
+    .isIn(["open", "closed"])
+    .withMessage("Status must be open or closed"),
+
+  validatorMiddleware,
+];
