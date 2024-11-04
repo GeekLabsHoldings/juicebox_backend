@@ -47,3 +47,12 @@ exports.updateProcessValidation = [
   checkArrayField('options', 'body'),
   validatorMiddleware,
 ];
+
+exports.deleteServiceValidation = [
+  validateMongoId('id', 'params'),
+  param('id').custom(async (id) => {
+    await checkExists(Service, id);
+  }),
+
+  validatorMiddleware,
+];

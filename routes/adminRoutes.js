@@ -29,6 +29,7 @@ const {
 const {
   createProcessValidation,
   updateProcessValidation,
+  deleteServiceValidation,
 } = require('../utils/validators/adminValidator');
 const {
   vacancyValidationRules,
@@ -45,7 +46,7 @@ router.use(authService.protect);
 router.use(authService.allowedTo('admin'));
 
 router.get('/get-all-call-sales-services', getAllCallSalesServices);
-router.delete('/delete-service/:id', deleteService);
+router.delete('/delete-service/:id', deleteServiceValidation, deleteService);
 router.delete('/delete-user/:id', deleteUser);
 router.put('/update-service/:id', updateService);
 router.patch('/update-process-service-option/:id', updateProcessServiceOption);
