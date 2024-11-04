@@ -6,6 +6,7 @@ const {
   checkStatus,
   checkArrayField,
 } = require('./validators');
+const ApiError = require('../../utils/apiError');
 const Service = require('../../models/serviceModel');
 const Process = require('../../models/serviceProcessModel');
 
@@ -21,7 +22,10 @@ exports.createProcessValidation = [
   }),
 
   body('serviceId').custom(async (serviceId) => {
-    await checkExists(Process, serviceId);
+    const service = await Process.findOne({ serviceId });
+    if (service) {
+      throw new ApiError('Service already has a process', 400);
+    }
   }),
 
   checkArrayField('options', 'body'),
