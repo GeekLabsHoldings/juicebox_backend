@@ -14,8 +14,14 @@ exports.createProcessValidation = [
   validateMongoId('serviceId', 'body'),
   body('serviceId').custom(async (serviceId) => {
     await checkExists(Service, serviceId);
-    await checkExists(Process, serviceId);
+  }),
+
+  body('serviceId').custom(async (serviceId) => {
     await checkStatus(Service, serviceId, 'purchased', '!==');
+  }),
+
+  body('serviceId').custom(async (serviceId) => {
+    await checkExists(Process, serviceId);
   }),
 
   checkArrayField('options', 'body'),
