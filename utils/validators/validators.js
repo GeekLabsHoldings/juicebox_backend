@@ -77,12 +77,34 @@ const checkBirthDate = (fieldName, location = 'body') =>
     });
 
 // Check if an item exists in the database
+// const checkExists = async (model, id) => {
+//   const exists = await model.exists({ _id: id });
+//   if (!exists) {
+//     throw new ApiError(errors.documentNotFound(id), 404);
+//   }
+// };
+
+// Check if an item exists in the database
 const checkExists = async (model, id) => {
-  const exists = await model.exists({ _id: id });
-  if (!exists) {
-    throw new ApiError(errors.resourceNotFound, 404);
+  const document = await model.findById(id);
+  if (!document) {
+    throw new ApiError(errors.documentNotFound(id), 404);
   }
 };
+
+// check status of model
+const checkStatus = async (model, id, statusValue, operation) => {
+  const document = await model.findById(id);
+  if (document.status[operation](statusValue)) {
+    throw new ApiError(errors.invalidStatus, 400);
+  }
+};
+
+// check is body is array field
+const checkArrayField = (fieldName, location = 'body') =>
+  getValidator(location, fieldName)
+    .isArray()
+    .withMessage(`${fieldName} must be an array`);
 
 module.exports = {
   checkServiceOwnership,
@@ -91,4 +113,6 @@ module.exports = {
   validateMongoId,
   checkBirthDate,
   validateStatus,
+  checkStatus,
+  checkArrayField,
 };
