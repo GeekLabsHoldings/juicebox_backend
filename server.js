@@ -7,6 +7,7 @@ const morgan = require('morgan');
 const cors = require('cors');
 const compression = require('compression');
 const bodyParser = require('body-parser');
+const cookieParser = require("cookie-parser");
 const cookieSession = require('cookie-session');
 const passport = require('passport');
 const helmet = require('helmet');
@@ -48,6 +49,7 @@ app.post(
 
 app.use(bodyParser.json());
 // app.use(express.json({ limit: "20kb" }));
+app.use(cookieParser());
 
 // Serve static files
 app.use(express.static(path.join(__dirname, 'uploads')));

@@ -1,17 +1,17 @@
-const bcrypt = require("bcryptjs");
-const crypto = require("crypto");
-const jwt = require("jsonwebtoken");
-const ApiError = require("../utils/apiError");
+const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
+const jwt = require('jsonwebtoken');
+const ApiError = require('../utils/apiError');
 const ApiResponse = require('../utils/apiResponse');
-const User = require("../models/userModel");
-const asyncHandler = require("express-async-handler");
-const { catchError } = require("../middlewares/catchErrorMiddleware");
-const { sendEmail } = require("../utils/sendEmail");
-const { verifyEmailTemplate } = require("../template/verifyEmail");
-const { passwordResetTemplate } = require("../template/passwordReset");
-const createToken = require("../utils/createToken");
-const { formatPhoneNumber } = require("../helpers/phoneNumber");
-const capitalizeFirstLetter = require("../helpers/capitalizeFirstLetter");
+const User = require('../models/userModel');
+const asyncHandler = require('express-async-handler');
+const { catchError } = require('../middlewares/catchErrorMiddleware');
+const { sendEmail } = require('../utils/sendEmail');
+const { verifyEmailTemplate } = require('../template/verifyEmail');
+const { passwordResetTemplate } = require('../template/passwordReset');
+const createToken = require('../utils/createToken');
+const { formatPhoneNumber } = require('../helpers/phoneNumber');
+const capitalizeFirstLetter = require('../helpers/capitalizeFirstLetter');
 
 exports.signUpController = catchError(
   asyncHandler(async (req, res, next) => {
@@ -19,7 +19,7 @@ exports.signUpController = catchError(
       req.body;
 
     const existingUser = await User.findOne({ email });
-    if (existingUser) return next(new ApiError("Email already exists", 400));
+    if (existingUser) return next(new ApiError('Email already exists', 400));
 
     // Validate and format phone number
     const formattedPhoneNumber = formatPhoneNumber(ISD, phoneNumber);
@@ -27,7 +27,6 @@ exports.signUpController = catchError(
     // Capitalize firstName and lastName
     const formattedFirstName = capitalizeFirstLetter(firstName);
     const formattedLastName = capitalizeFirstLetter(lastName);
-
 
     const newUser = new User({
       firstName: formattedFirstName,
@@ -44,40 +43,73 @@ exports.signUpController = catchError(
     const token = jwt.sign(
       { email: newUser.email },
       process.env.JWT_SECRET_KEY,
-      { expiresIn: process.env.JWT_EXPIRE_TIME }
+      { expiresIn: process.env.JWT_EXPIRE_TIME },
     );
 
     await sendEmail(
       email,
-      "Please Verify Your Email",
-      verifyEmailTemplate(token)
+      'Please Verify Your Email',
+      verifyEmailTemplate(token),
     );
 
     res.status(201).json({
-      message: "User created successfully! Please verify your email.",
+      message: 'User created successfully! Please verify your email.',
     });
-  })
+  }),
 );
 
+// exports.signInController = catchError(
+//   asyncHandler(async (req, res, next) => {
+//     const { email, password } = req.body;
+
+//     const user = await User.findOne({ email });
+//     if (!user) return next(new ApiError("User not found", 404));
+
+//     if (!user.verifyEmail)
+//       return next(new ApiError("Please verify your email", 400));
+
+//     const isPasswordCorrect = await bcrypt.compare(password, user.password);
+//     if (!isPasswordCorrect)
+//       return next(new ApiError("Invalid email or password", 401));
+
+//     // 2- Generate token
+//     const token = createToken(user);
+
+//     res.status(200).json(new ApiResponse(200, { token }, 'User logged in successfully'));
+//   })
+// );
+
+// signInController example
 exports.signInController = catchError(
   asyncHandler(async (req, res, next) => {
     const { email, password } = req.body;
 
     const user = await User.findOne({ email });
-    if (!user) return next(new ApiError("User not found", 404));
+    if (!user) return next(new ApiError('User not found', 404));
 
     if (!user.verifyEmail)
-      return next(new ApiError("Please verify your email", 400));
+      return next(new ApiError('Please verify your email', 400));
 
     const isPasswordCorrect = await bcrypt.compare(password, user.password);
     if (!isPasswordCorrect)
-      return next(new ApiError("Invalid email or password", 401));
+      return next(new ApiError('Invalid email or password', 401));
 
-    // 2- Generate token
+    // Generate token
     const token = createToken(user);
 
-    res.status(200).json(new ApiResponse(200, { token }, 'User logged in successfully'));
-  })
+    // Set the token as an HttpOnly cookie
+    res.cookie('token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'Strict', // or 'Lax' based on your app’s needs
+      maxAge: process.env.JWT_COOKIE_EXPIRE_TIME * 24 * 60 * 60 * 1000, // expires in days
+      domain: '.creativejuicebox.com', 
+    });
+
+    res
+      .status(200)
+      .json(new ApiResponse(200, null, 'User logged in successfully'));
+  }),
 );
 
 exports.verifyEmailController = catchError(
@@ -86,15 +118,15 @@ exports.verifyEmailController = catchError(
     try {
       const decoded = jwt.verify(token, process.env.JWT_SECRET_KEY);
       const user = await User.findOne({ email: decoded.email });
-      if (!user) return next(new ApiError("User not found", 404));
+      if (!user) return next(new ApiError('User not found', 404));
       user.verifyEmail = true;
       await user.save();
-      res.status(200).json({ message: "Email verified successfully!" });
+      res.status(200).json({ message: 'Email verified successfully!' });
     } catch (err) {
-      console.error("Email verification error:", err);
-      return next(new ApiError("Invalid or expired token", 400));
+      console.error('Email verification error:', err);
+      return next(new ApiError('Invalid or expired token', 400));
     }
-  })
+  }),
 );
 
 // @desc    Forgot password
@@ -105,16 +137,16 @@ exports.forgotPassword = asyncHandler(async (req, res, next) => {
   const user = await User.findOne({ email: req.body.email });
   if (!user) {
     return next(
-      new ApiError(`There is no user with that email ${req.body.email}`, 404)
+      new ApiError(`There is no user with that email ${req.body.email}`, 404),
     );
   }
 
   // 2) If user exists, generate and hash reset random 6-digit code, then save it in the DB
   const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
   const hashedResetCode = crypto
-    .createHash("sha256")
+    .createHash('sha256')
     .update(resetCode)
-    .digest("hex");
+    .digest('hex');
 
   // Save hashed password reset code into db
   user.passwordResetCode = hashedResetCode;
@@ -128,8 +160,8 @@ exports.forgotPassword = asyncHandler(async (req, res, next) => {
   try {
     await sendEmail(
       user.email, // to
-      "Your password reset code (valid for 10 min)", // subject
-      passwordResetTemplate(resetCode) // htmlContent
+      'Your password reset code (valid for 10 min)', // subject
+      passwordResetTemplate(resetCode), // htmlContent
     );
   } catch (err) {
     user.passwordResetCode = undefined;
@@ -137,12 +169,12 @@ exports.forgotPassword = asyncHandler(async (req, res, next) => {
     user.passwordResetVerified = undefined;
 
     await user.save();
-    return next(new ApiError("There is an error in sending email", 500));
+    return next(new ApiError('There is an error in sending email', 500));
   }
 
   res
     .status(200)
-    .json({ status: "Success", message: "Reset code sent to email" });
+    .json({ status: 'Success', message: 'Reset code sent to email' });
 });
 
 // @desc    Verify password reset code
@@ -151,16 +183,16 @@ exports.forgotPassword = asyncHandler(async (req, res, next) => {
 exports.verifyPassResetCode = asyncHandler(async (req, res, next) => {
   // 1) Get user based on reset code
   const hashedResetCode = crypto
-    .createHash("sha256")
+    .createHash('sha256')
     .update(req.body.resetCode)
-    .digest("hex");
+    .digest('hex');
 
   const user = await User.findOne({
     passwordResetCode: hashedResetCode,
     passwordResetExpires: { $gt: Date.now() },
   });
   if (!user) {
-    return next(new ApiError("Reset code invalid or expired"));
+    return next(new ApiError('Reset code invalid or expired'));
   }
 
   // 2) Reset code valid
@@ -168,7 +200,7 @@ exports.verifyPassResetCode = asyncHandler(async (req, res, next) => {
   await user.save();
 
   res.status(200).json({
-    status: "Success",
+    status: 'Success',
   });
 });
 
@@ -180,13 +212,13 @@ exports.resetPassword = asyncHandler(async (req, res, next) => {
   const user = await User.findOne({ email: req.body.email });
   if (!user) {
     return next(
-      new ApiError(`There is no user with email ${req.body.email}`, 404)
+      new ApiError(`There is no user with email ${req.body.email}`, 404),
     );
   }
 
   // 2) Check if reset code verified
   if (!user.passwordResetVerified) {
-    return next(new ApiError("Reset code not verified", 400));
+    return next(new ApiError('Reset code not verified', 400));
   }
 
   user.password = req.body.newPassword;
@@ -199,8 +231,8 @@ exports.resetPassword = asyncHandler(async (req, res, next) => {
   // 3) if everything is ok, generate token
   const token = createToken(user._id);
   res.status(200).json({
-    status: "success",
-    message: "Password reset successfully",
+    status: 'success',
+    message: 'Password reset successfully',
     token,
   });
 });
@@ -213,7 +245,7 @@ exports.googleLogin = asyncHandler(async (req, res, next) => {
     req.body;
 
   if (!email_verified) {
-    return next(new ApiError("Email not verified", 400));
+    return next(new ApiError('Email not verified', 400));
   }
 
   const user = await User.findOne({ email });
@@ -234,7 +266,7 @@ exports.googleLogin = asyncHandler(async (req, res, next) => {
     const token = createToken(newUser);
 
     res.status(200).json({
-      message: "User signed up successfully",
+      message: 'User signed up successfully',
       token,
     });
   }
@@ -242,7 +274,12 @@ exports.googleLogin = asyncHandler(async (req, res, next) => {
   const token = createToken(user);
 
   res.status(200).json({
-    message: "User logged in successfully",
+    message: 'User logged in successfully',
     token,
   });
 });
+
+exports.logoutController = (req, res) => {
+  res.cookie("token", "", { maxAge: 1 });
+  res.status(200).json({ message: "User logged out successfully" });
+};
