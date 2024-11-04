@@ -1,4 +1,4 @@
-const { body } = require('express-validator');
+const { param, body } = require('express-validator');
 const validatorMiddleware = require('../../middlewares/validationMiddleware');
 const {
   checkExists,
@@ -26,5 +26,20 @@ exports.createProcessValidation = [
 
   checkArrayField('options', 'body'),
 
+  validatorMiddleware,
+];
+
+// Validation for updating a process of a service
+exports.updateProcessValidation = [
+  validateMongoId('id', 'params'),
+  param('id').custom(async (id) => {
+    await checkExists(Process, id);
+  }),
+
+  param('id').custom(async (id) => {
+    await checkStatus(Process, id, 'completed', '===');
+  }),
+
+  checkArrayField('options', 'body'),
   validatorMiddleware,
 ];

@@ -13,6 +13,7 @@ const {
   getAllCareersForVacancy,
   makeProcessService,
   updateProcessService,
+  updateProcessServiceOption,
   createMeeting,
   updateMeeting,
   deleteMeeting,
@@ -26,11 +27,14 @@ const {
   updateMeetingValidation,
 } = require('../utils/validators/meetingValidator');
 const {
+  createProcessValidation,
+  updateProcessValidation,
+} = require('../utils/validators/adminValidator');
+const {
   vacancyValidationRules,
 } = require('../utils/validators/careerValidator');
 const { blogValidationRules } = require('../utils/validators/blogValidator');
 const { handleMedia, deleteMedia } = require('../helpers/mediaHandler');
-const uploadMediaWithFile = require('../services/fileUploadingService');
 
 const authService = require('../services/authService');
 
@@ -44,8 +48,9 @@ router.get('/get-all-call-sales-services', getAllCallSalesServices);
 router.delete('/delete-service/:id', deleteService);
 router.delete('/delete-user/:id', deleteUser);
 router.put('/update-service/:id', updateService);
-router.patch('/update-process-service/:id', updateProcessService);
-router.post('/make-process-service', makeProcessService);
+router.patch('/update-process-service-option/:id', updateProcessServiceOption);
+router.post('/make-process-service', createProcessValidation, makeProcessService);
+router.put('/update-process-service/:id', updateProcessValidation, updateProcessService);
 router.get('/get-all-users', getAllUsers);
 router.post('/notify-user', notifyUser);
 router.post('/add-new-vacancy', vacancyValidationRules, addNewVacancy);

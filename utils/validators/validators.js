@@ -39,7 +39,7 @@ const validateFutureDate = (fieldName, location = 'body') =>
     });
 
 // Validate MongoDB ObjectId for any request location
-const validateMongoId = (fieldName, location = 'param') =>
+const validateMongoId = (fieldName, location = 'params') =>
   getValidator(location, fieldName)
     .isMongoId()
     .withMessage(errors.invalidMongoId(fieldName))
@@ -93,10 +93,30 @@ const checkExists = async (model, id) => {
 };
 
 // check status of model
-const checkStatus = async (model, id, statusValue, operation) => {
+const checkStatus = async (model, id, statusValue, operator) => { 
   const document = await model.findById(id);
-  if (document.status[operation](statusValue)) {
-    throw new ApiError(errors.invalidStatus, 400);
+
+  if (!document) {
+    throw new ApiError(errors.documentNotFound(id), 404);
+  }
+
+  // Apply the specified comparison operator
+  const statusMatches = {
+    '===': document.status === statusValue,
+    '!==': document.status !== statusValue,
+    '>': document.status > statusValue,
+    '<': document.status < statusValue,
+    '>=': document.status >= statusValue,
+    '<=': document.status <= statusValue,
+  }[operator];
+
+  if (statusMatches === undefined) {
+    throw new ApiError(`Invalid operator: ${operator}`, 400);
+  }
+
+  // If the condition matches, throw an error
+  if (statusMatches) {
+    throw new ApiError(errors.invalidStatus(model.modelName, id, document.status), 400);
   }
 };
 

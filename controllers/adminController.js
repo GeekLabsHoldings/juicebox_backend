@@ -241,49 +241,53 @@ exports.deleteAllRejectedCareers = catchError(
 );
 
 // Create a new process service
-exports.makeProcessService = catchError(
-  asyncHandler(async (req, res, next) => {
-    const { serviceId, options } = req.body;
+exports.makeProcessService = factory.createOne(Process);
+// exports.makeProcessService = catchError(
+//   asyncHandler(async (req, res, next) => {
+//     const { serviceId, options } = req.body;
 
-    // Find the service by ID
-    const service = await Service.findById(serviceId);
+//     // Find the service by ID
+//     const service = await Service.findById(serviceId);
 
-    // Check if the necessary data is provided
-    if (!service || !options) {
-      return next(new ApiError('Service ID and options are required', 400));
-    }
+//     // Check if the necessary data is provided
+//     if (!service || !options) {
+//       return next(new ApiError('Service ID and options are required', 400));
+//     }
 
-    // Check if the service is not purchased
-    if (service.status !== 'purchased') {
-      return next(new ApiError('Service is not purchased', 400));
-    }
+//     // Check if the service is not purchased
+//     if (service.status !== 'purchased') {
+//       return next(new ApiError('Service is not purchased', 400));
+//     }
 
-    // Check if a process service already exists for this service
-    const existingProcess = await Process.findOne({ serviceId });
-    if (existingProcess) {
-      return next(new ApiError('A process service already exists for this service', 400));
-    }
+//     // Check if a process service already exists for this service
+//     const existingProcess = await Process.findOne({ serviceId });
+//     if (existingProcess) {
+//       return next(new ApiError('A process service already exists for this service', 400));
+//     }
 
-    // Create a new process service
-    const processService = await Process.create({
-      serviceId,
-      options,
-    });
+//     // Create a new process service
+//     const processService = await Process.create({
+//       serviceId,
+//       options,
+//     });
 
-    // Send the response back to the client
-    res
-      .status(201)
-      .json(
-        new ApiResponse(
-          200,
-          processService,
-          'Process service created successfully',
-        ),
-      );
-  }),
-);
+//     // Send the response back to the client
+//     res
+//       .status(201)
+//       .json(
+//         new ApiResponse(
+//           200,
+//           processService,
+//           'Process service created successfully',
+//         ),
+//       );
+//   }),
+// );
 
-exports.updateProcessService = catchError(
+// Update a process service
+exports.updateProcessService = factory.updateOne(Process);
+
+exports.updateProcessServiceOption = catchError(
   asyncHandler(async (req, res, next) => {
     const { id } = req.params; // ID of the process service
     const { optionId } = req.body; // ID of the option to update
