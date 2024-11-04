@@ -67,22 +67,7 @@ exports.notifyUser = catchError(
 exports.deleteService = factory.deleteOne(Service);
 
 // delete a user
-exports.deleteUser = catchError(
-  asyncHandler(async (req, res) => {
-    const { id } = req.params;
-
-    // Fetch the user by ID
-    const user = await User.findById(id);
-
-    if (!user) {
-      throw new ApiError('User not found', 404);
-    }
-
-    await User.findByIdAndDelete(id);
-
-    res.status(204).json(new ApiResponse(204, user, 'User deleted'));
-  }),
-);
+exports.deleteUser = factory.deleteOne(User);
 
 // Update a service when status is call-sales
 exports.updateService = catchError(

@@ -8,6 +8,7 @@ const {
 } = require('./validators');
 const ApiError = require('../../utils/apiError');
 const Service = require('../../models/serviceModel');
+const User = require('../../models/userModel');
 const Process = require('../../models/serviceProcessModel');
 
 // Validation for creating a process of a service
@@ -53,6 +54,13 @@ exports.deleteServiceValidation = [
   param('id').custom(async (id) => {
     await checkExists(Service, id);
   }),
+  validatorMiddleware,
+];
 
+exports.deleteUserValidation = [
+  validateMongoId('id', 'params'),
+  param('id').custom(async (id) => {
+    await checkExists(User, id);
+  }),
   validatorMiddleware,
 ];
