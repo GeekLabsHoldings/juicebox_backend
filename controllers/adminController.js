@@ -16,21 +16,12 @@ exports.getAllCallSalesServices = catchError(
   asyncHandler(async (req, res) => {
     const services = await Service.find({ status: 'call-sales' });
 
-    res.status(200).json({
-      success: true,
-      services,
-    });
+    res.status(200).json(new ApiResponse(200, services, 'Services retrieved'));
   }),
 );
 
 // Get all users
-exports.getAllUsers = catchError(
-  asyncHandler(async (req, res) => {
-    const users = await User.find();
-
-    res.status(200).json(new ApiResponse(200, users, 'Users retrieved'));
-  }),
-);
+exports.getAllUsers = factory.getAll(User);
 
 // Notification to a user by when a service is completed
 exports.notifyUser = catchError(
