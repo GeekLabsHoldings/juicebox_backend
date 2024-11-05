@@ -62,9 +62,7 @@ exports.signUpController = catchError(
       verifyEmailTemplate(token),
     );
 
-    res.status(201).json({
-      message: 'User created successfully! Please verify your email.',
-    });
+    res.status(201).json(new ApiResponse(201, newUser, 'User created successfully, please verify your email'));
   }),
 );
 
@@ -133,7 +131,7 @@ exports.verifyEmailController = catchError(
       if (!user) return next(new ApiError('User not found', 404));
       user.verifyEmail = true;
       await user.save();
-      res.status(200).json({ message: 'Email verified successfully!' });
+      res.status(200).json(new ApiResponse(200, {}, 'Email verified successfully'));
     } catch (err) {
       console.error('Email verification error:', err);
       return next(new ApiError('Invalid or expired token', 400));
@@ -186,7 +184,7 @@ exports.forgotPassword = asyncHandler(async (req, res, next) => {
 
   res
     .status(200)
-    .json({ status: 'Success', message: 'Reset code sent to email' });
+    .json(new ApiResponse(200, {}, 'Password reset code sent to email'));
 });
 
 // @desc    Verify password reset code
@@ -211,9 +209,7 @@ exports.verifyPassResetCode = asyncHandler(async (req, res, next) => {
   user.passwordResetVerified = true;
   await user.save();
 
-  res.status(200).json({
-    status: 'Success',
-  });
+  res.status(200).json(new ApiResponse(200, {}, 'Reset code verified'));
 });
 
 // @desc    Reset password
@@ -242,11 +238,11 @@ exports.resetPassword = asyncHandler(async (req, res, next) => {
 
   // 3) if everything is ok, generate token
   const token = createToken(user._id);
-  res.status(200).json({
-    status: 'success',
-    message: 'Password reset successfully',
-    token,
-  });
+
+  // Set the token as an HttpOnly cookie
+  setCookie(res, token);
+
+  res.status(200).json(new ApiResponse(200, {}, 'Password reset successfully'));
 });
 
 // @desc    Login with google
