@@ -13,6 +13,16 @@ const createToken = require('../utils/createToken');
 const { formatPhoneNumber } = require('../helpers/phoneNumber');
 const capitalizeFirstLetter = require('../helpers/capitalizeFirstLetter');
 
+// helper function for set cookie
+const setCookie = (res, token) => {
+  res.cookie('token', token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'Strict', // or 'Lax' depending on your app’s needs
+    maxAge: Number(process.env.JWT_COOKIE_EXPIRE_TIME) * 24 * 60 * 60 * 1000,
+  });
+};
+
 exports.signUpController = catchError(
   asyncHandler(async (req, res, next) => {
     const { firstName, lastName, email, password, ISD, phoneNumber, DOB } =
@@ -98,12 +108,7 @@ exports.signInController = catchError(
     const token = createToken(user);
 
     // Set the token as an HttpOnly cookie
-    res.cookie('token', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'Strict', // or 'Lax' depending on your app’s needs
-      maxAge: Number(process.env.JWT_COOKIE_EXPIRE_TIME) * 24 * 60 * 60 * 1000,
-    });
+    setCookie(res, token);
 
     // res.cookie("token", token, {
     //   httpOnly: true,
@@ -273,12 +278,7 @@ exports.googleLogin = asyncHandler(async (req, res, next) => {
     const token = createToken(newUser);
 
     // Set the token as an HttpOnly cookie
-    res.cookie('token', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'Strict', // or 'Lax' depending on your app’s needs
-      maxAge: Number(process.env.JWT_COOKIE_EXPIRE_TIME) * 24 * 60 * 60 * 1000,
-    });
+    setCookie(res, token);
 
     res
       .status(200)
@@ -288,12 +288,7 @@ exports.googleLogin = asyncHandler(async (req, res, next) => {
   const token = createToken(user);
 
   // Set the token as an HttpOnly cookie
-  res.cookie('token', token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'Strict', // or 'Lax' depending on your app’s needs
-    maxAge: Number(process.env.JWT_COOKIE_EXPIRE_TIME) * 24 * 60 * 60 * 1000,
-  });
+  setCookie(res, token);
 
   res.status(200).json(new ApiResponse(200, {}, 'User logged in successfully'));
 });
