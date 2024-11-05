@@ -272,21 +272,74 @@ exports.googleLogin = asyncHandler(async (req, res, next) => {
 
     const token = createToken(newUser);
 
-    res.status(200).json({
-      message: 'User signed up successfully',
-      token,
+    // Set the token as an HttpOnly cookie
+    res.cookie('token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'Strict', // or 'Lax' depending on your app’s needs
+      maxAge: Number(process.env.JWT_COOKIE_EXPIRE_TIME) * 24 * 60 * 60 * 1000,
     });
+
+    res
+      .status(200)
+      .json(new ApiResponse(200, {}, 'User signed up successfully'));
   }
 
   const token = createToken(user);
 
-  res.status(200).json({
-    message: 'User logged in successfully',
-    token,
+  // Set the token as an HttpOnly cookie
+  res.cookie('token', token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'Strict', // or 'Lax' depending on your app’s needs
+    maxAge: Number(process.env.JWT_COOKIE_EXPIRE_TIME) * 24 * 60 * 60 * 1000,
   });
+
+  res.status(200).json(new ApiResponse(200, {}, 'User logged in successfully'));
 });
+
+// exports.googleLogin = asyncHandler(async (req, res, next) => {
+//   const { sub, given_name, family_name, picture, email, email_verified } =
+//     req.body;
+
+//   if (!email_verified) {
+//     return next(new ApiError('Email not verified', 400));
+//   }
+
+//   const user = await User.findOne({ email });
+
+//   const formattedFirstName = capitalizeFirstLetter(given_name);
+//   const formattedLastName = capitalizeFirstLetter(family_name);
+
+//   if (!user) {
+//     const newUser = await User.create({
+//       firstName: formattedFirstName,
+//       lastName: formattedLastName,
+//       email,
+//       avatar: picture,
+//       googleId: sub,
+//       verifyEmail: email_verified,
+//     });
+
+//     const token = createToken(newUser);
+
+//     res.status(200).json({
+//       message: 'User signed up successfully',
+//       token,
+//     });
+//   }
+
+//   const token = createToken(user);
+
+//   res.status(200).json({
+//     message: 'User logged in successfully',
+//     token,
+//   });
+// });
 
 exports.logoutController = (req, res) => {
   res.cookie('token', '', { maxAge: 1 });
-  res.status(200).json({ message: 'User logged out successfully' });
+  res
+    .status(200)
+    .json(new ApiResponse(200, {}, 'User logged out successfully'));
 };

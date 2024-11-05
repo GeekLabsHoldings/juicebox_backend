@@ -7,6 +7,7 @@ const {
   resetPassword,
   verifyPassResetCode,
   googleLogin,
+  logoutController,
 } = require("../controllers/authController.js");
 const passport = require("passport");
 const {
@@ -21,6 +22,7 @@ const router = express.Router();
 
 router.post("/signup", signupValidator, signUpController);
 router.post("/login", loginValidator, signInController);
+router.post("/logout", logoutController);
 router.get("/verify-email/:token", verifyEmailController);
 router.post("/forgot-password", forgotPassword);
 router.post("/verify-reset-code", verifyPassResetCode);
