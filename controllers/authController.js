@@ -101,14 +101,21 @@ exports.signInController = catchError(
     res.cookie('token', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'Strict', // or 'Lax' based on your app’s needs
-      maxAge: process.env.JWT_COOKIE_EXPIRE_TIME * 24 * 60 * 60 * 1000, // expires in days
-      domain: '.creativejuicebox.com', 
+      sameSite: 'Strict', // or 'Lax' depending on your app’s needs
+      maxAge: Number(process.env.JWT_COOKIE_EXPIRE_TIME) * 24 * 60 * 60 * 1000,
     });
+
+    // res.cookie("token", token, {
+    //   httpOnly: true,
+    //   secure: process.env.NODE_ENV === "production",
+    //   sameSite: "Strict", // or 'Lax' depending on your app’s needs
+    //   maxAge: Number(process.env.JWT_COOKIE_EXPIRE_TIME) * 30 * 24 * 60 * 60 * 1000,
+    //   domain: ".creativejuicebox.com", // Optional: only if you're managing cookies across subdomains
+    // });
 
     res
       .status(200)
-      .json(new ApiResponse(200, null, 'User logged in successfully'));
+      .json(new ApiResponse(200, {}, 'User logged in successfully'));
   }),
 );
 
@@ -280,6 +287,6 @@ exports.googleLogin = asyncHandler(async (req, res, next) => {
 });
 
 exports.logoutController = (req, res) => {
-  res.cookie("token", "", { maxAge: 1 });
-  res.status(200).json({ message: "User logged out successfully" });
+  res.cookie('token', '', { maxAge: 1 });
+  res.status(200).json({ message: 'User logged out successfully' });
 };
