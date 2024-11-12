@@ -46,6 +46,7 @@ const limiter = rateLimit({
 });
 app.use(limiter);
 
+// Define allowed origins in the allowlist
 const allowlist = process.env.ALLOWLIST
   ? process.env.ALLOWLIST.split(',')
   : [];
