@@ -1,6 +1,6 @@
 const asyncHandler = require('express-async-handler');
 const bcrypt = require('bcryptjs');
-const createToken = require('../utils/createToken');
+const createTokenParts = require('../utils/createToken');
 const User = require('../models/userModel');
 const Service = require('../models/serviceModel');
 const Meeting = require('../models/meetingModel');
@@ -16,6 +16,7 @@ const {
   checkServiceOwnership,
   findNotification,
 } = require('../helpers/notificationHelper');
+const { setCookie } = require('../utils/cookies');
 
 // @desc    Get specific user by id
 // @route   GET /api/v1/users/:id
@@ -29,7 +30,7 @@ exports.getLoggedUserData = catchError(
   asyncHandler(async (req, res, next) => {
     req.params.id = req.user._id;
     next();
-  })
+  }),
 );
 
 // @desc    Update logged user password
@@ -59,12 +60,15 @@ exports.updateLoggedUserPassword = catchError(
     // 4) Save the updated user
     await user.save();
 
-    // 5) Generate a new token
-    const token = createToken(user._id);
+    // 5) Create token parts for layered cookies
+    const tokenParts = createTokenParts(user);
+
+    // 6) Set each token part as an HttpOnly cookie
+    setCookie(res, tokenParts);
 
     res
       .status(200)
-      .json(new ApiResponse(200, { token }, 'Password updated successfully'));
+      .json(new ApiResponse(200, {}, 'Password updated successfully'));
   }),
 );
 

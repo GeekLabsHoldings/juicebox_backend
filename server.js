@@ -46,8 +46,24 @@ const limiter = rateLimit({
 });
 app.use(limiter);
 
-// Enable Cross-Origin Resource Sharing (CORS)
-app.use(cors());
+const allowlist = process.env.ALLOWLIST
+  ? process.env.ALLOWLIST.split(',')
+  : [];
+
+// CORS
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Check if the origin is in the allowlist
+      if (allowlist.includes(origin) || !origin) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
+    credentials: true,
+  })
+);
 
 // Compress all responses to improve performance
 app.use(compression());
