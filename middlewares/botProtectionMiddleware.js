@@ -67,7 +67,7 @@ async function calculateHoneypotWeight(ip, route) {
 // **Helper: Handle Offenses**
 async function handleOffenses(ip, res, weight = 1) {
   const offenseKey = `offense_count:${ip}`;
-  const offenseCount = await redis.incrby(offenseKey, weight);
+  const offenseCount = await redis.incr(offenseKey, weight);
   await redis.expire(offenseKey, config.get('offense.resetAfterSeconds'));
   offenseCount.inc();
 
