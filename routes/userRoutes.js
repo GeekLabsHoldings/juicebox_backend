@@ -19,6 +19,9 @@ const {
 const {
   updateLoggedUserValidator,
 } = require("../utils/validators/userValidator");
+const {
+  trackSuspiciousActivity,
+} = require('../middlewares/botProtectionMiddleware');
 
 // Create upload configuration for images
 const uploadImage = createMulterStorage(
@@ -32,6 +35,7 @@ const authService = require("../services/authService");
 const router = express.Router();
 
 router.use(authService.protect);
+router.use(trackSuspiciousActivity);
 router.use(authService.allowedTo("user"));
 
 router.get('/get-me', getLoggedUserData, getUser);

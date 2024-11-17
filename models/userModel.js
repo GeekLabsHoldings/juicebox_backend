@@ -27,6 +27,7 @@ const userSchema = new mongoose.Schema(
       minlength: [2, 'Last name must be at least 2 characters long'],
       maxlength: [50, 'Last name must be less than 50 characters long'],
       trim: true,
+      index: true, // Indexing last name for faster lookups
     },
     email: {
       type: String,
@@ -39,6 +40,8 @@ const userSchema = new mongoose.Schema(
     password: {
       type: String,
     },
+    isBlocked: { type: Boolean, default: false },
+    blockExpiresAt: { type: Date, default: null },
     phoneNumber: {
       type: String,
       trim: true,

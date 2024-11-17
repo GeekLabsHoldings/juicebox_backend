@@ -93,14 +93,14 @@ exports.signInController = catchError(
     const { email, password } = req.body;
 
     const user = await User.findOne({ email });
-    if (!user) return next(new ApiError("User not found", 404));
+    if (!user) return next(new ApiError('User not found', 404));
 
     if (!user.verifyEmail)
-      return next(new ApiError("Please verify your email", 400));
+      return next(new ApiError('Please verify your email', 400));
 
     const isPasswordCorrect = await bcrypt.compare(password, user.password);
     if (!isPasswordCorrect)
-      return next(new ApiError("Invalid email or password", 401));
+      return next(new ApiError('Invalid email or password', 401));
 
     // Create token parts for layered cookies
     const tokenParts = createTokenParts(user);
@@ -108,8 +108,10 @@ exports.signInController = catchError(
     // Set each token part as an HttpOnly cookie
     setCookie(res, tokenParts);
 
-    res.status(200).json(new ApiResponse(200, {}, "User logged in successfully"));
-  })
+    res
+      .status(200)
+      .json(new ApiResponse(200, {}, 'User logged in successfully'));
+  }),
 );
 
 exports.verifyEmailController = catchError(
@@ -322,16 +324,26 @@ exports.googleLogin = asyncHandler(async (req, res, next) => {
 
 // Logout Controller
 exports.logoutController = (req, res) => {
-  ["i_token", "i_user", "c_data", "auth_data", "xs", "c_user", "auth_r"].forEach(partKey => {
-    res.cookie(partKey, "", {
-      maxAge: 1,
+  [
+    'i_token',
+    'i_user',
+    'c_data',
+    'auth_data',
+    'xs',
+    'c_user',
+    'auth_r',
+  ].forEach((partKey) => {
+    res.cookie(partKey, '', {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "Strict",
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'None' : 'Lax',
+      maxAge: 1,
     });
   });
 
-  res.status(200).json(new ApiResponse(200, {}, "User logged out successfully"));
+  res
+    .status(200)
+    .json(new ApiResponse(200, {}, 'User logged out successfully'));
 };
 
 // const bcrypt = require('bcryptjs');

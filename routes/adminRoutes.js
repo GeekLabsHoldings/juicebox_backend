@@ -38,13 +38,16 @@ const {
 } = require('../utils/validators/careerValidator');
 const { blogValidationRules } = require('../utils/validators/blogValidator');
 const { handleMedia, deleteMedia } = require('../helpers/mediaHandler');
+const {
+  trackSuspiciousActivity,
+} = require('../middlewares/botProtectionMiddleware');
 
 const authService = require('../services/authService');
 
 const router = express.Router();
 
 router.use(authService.protect);
-
+router.use(trackSuspiciousActivity);
 router.use(authService.allowedTo('admin'));
 
 router.get('/get-all-call-sales-services', getAllCallSalesServices);
