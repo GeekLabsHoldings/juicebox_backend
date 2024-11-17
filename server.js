@@ -16,7 +16,9 @@ const mongoSanitize = require('express-mongo-sanitize');
 const redisClient = require('./config/redis');
 
 const {
-  behaviorProtection,
+  botProtection,
+} = require('./middlewares/botDetectionMiddleware');
+const {
   rateLimitMiddleware,
   honeypot,
 } = require('./middlewares/botProtectionMiddleware');
@@ -25,6 +27,9 @@ const ApiError = require('./utils/apiError');
 const globalError = require('./middlewares/errorMiddleware');
 const dbConnection = require('./config/database');
 const createAdminUser = require('./utils/createAdminUser');
+
+// Mount Routes
+const mountRoutes = require('./routes');
 
 // Initialize Passport configuration
 require('./config/passport');
@@ -44,20 +49,25 @@ if (process.env.NODE_ENV === 'development') {
   console.log(`Mode: ${process.env.NODE_ENV}`);
 }
 
-// CORS Configuration
-const allowlist = process.env.ALLOWLIST ? process.env.ALLOWLIST.split(',') : [];
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      if (allowlist.includes(origin) || !origin) {
-        callback(null, true);
-      } else {
-        callback(new Error('Not allowed by CORS'));
-      }
-    },
-    credentials: true,
-  }),
-);
+app.use(cors({
+  origin: true, // Allow all origins for testing; restrict in production
+  credentials: true,
+}));
+
+// // CORS Configuration
+// const allowlist = process.env.ALLOWLIST ? process.env.ALLOWLIST.split(',') : [];
+// app.use(
+//   cors({
+//     origin: (origin, callback) => {
+//       if (allowlist.includes(origin) || !origin) {
+//         callback(null, true);
+//       } else {
+//         callback(new Error('Not allowed by CORS'));
+//       }
+//     },
+//     credentials: true,
+//   }),
+// );
 
 // Middleware to Prevent HTTP Parameter Pollution
 app.use(hpp());
@@ -92,9 +102,6 @@ app.use(passport.session());
 // Input Sanitization
 app.use(mongoSanitize());
 
-app.use(behaviorProtection);
-app.use(rateLimitMiddleware);
-
 // Root Route
 app.get('/', (req, res) => {
   res.status(200).send({
@@ -103,11 +110,12 @@ app.get('/', (req, res) => {
   });
 });
 
-// Mount Routes
-const mountRoutes = require('./routes');
+app.use(rateLimitMiddleware);
+app.use(botProtection);
+app.use(honeypot);
+
 mountRoutes(app);
 
-app.use(honeypot);
 app.post('/fake-login', (req, res) => {
   res.status(200).send({ success: true, message: 'Login successful' });
 });

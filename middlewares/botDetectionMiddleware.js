@@ -1,10 +1,18 @@
 const rateLimit = require('express-rate-limit');
 const redis = require('../config/ioredis');
 const User = require('../models/userModel');
-const { handleOffense, escalateOffense, handleUserBlock } = require('../helpers/botDetectionHelper');
+const {
+  handleOffense,
+  escalateOffense,
+  handleUserBlock,
+} = require('../helpers/botDetectionHelper');
 
 // Rate Limiter Function
-const dynamicRateLimiter = (limit, windowMs, message = 'Too many requests, please slow down.') =>
+const dynamicRateLimiter = (
+  limit,
+  windowMs,
+  message = 'Too many requests, please slow down.',
+) =>
   rateLimit({
     windowMs,
     max: limit,
@@ -28,13 +36,17 @@ async function botProtection(req, res, next) {
 
     // Check if IP is blocked
     if (isBlocked[1]) {
-      return res.status(429).json({ message: 'Temporary block due to suspicious activity.' });
+      return res
+        .status(429)
+        .json({ message: 'Temporary block due to suspicious activity.' });
     }
 
     // If User-Agent changes frequently, escalate offense
     if (lastUserAgent[1] && lastUserAgent[1] !== userAgent) {
       await escalateOffense(ip, 'Suspicious User-Agent detected.');
-      return res.status(429).json({ message: 'Temporary block for suspicious behavior.' });
+      return res
+        .status(429)
+        .json({ message: 'Temporary block for suspicious behavior.' });
     }
 
     // Update User-Agent tracking
@@ -55,12 +67,14 @@ async function botProtection(req, res, next) {
 
 // Honeypot Middleware for Tracking Automated or Malicious Access
 async function honeypot(req, res, next) {
-  const honeypotRoutes = ['/fake-login', '/fake-signup', '/unused-route'];
+  const honeypotRoutes = ['/fake-login', '/fake-signup'];
   const ip = req.ip;
 
   if (honeypotRoutes.includes(req.path)) {
     await escalateOffense(ip, 'Triggered honeypot route.');
-    return res.status(403).json({ message: 'Access blocked for suspicious activity.' });
+    return res
+      .status(403)
+      .json({ message: 'Access blocked for suspicious activity.' });
   }
   next();
 }

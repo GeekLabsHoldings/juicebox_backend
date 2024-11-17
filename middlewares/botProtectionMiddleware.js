@@ -14,6 +14,14 @@ const offenseCount = new client.Counter({
   name: 'offense_attempts',
   help: 'Number of suspicious activities detected',
 });
+const honeypotHitCount = new client.Counter({
+  name: 'honeypot_hits',
+  help: 'Number of honeypot routes accessed',
+});
+const userAgentViolationCount = new client.Counter({
+  name: 'user_agent_violations',
+  help: 'Number of suspicious User-Agent strings detected',
+});
 
 // **Logger**
 const logger = winston.createLogger({
@@ -23,7 +31,6 @@ const logger = winston.createLogger({
     winston.format.json(),
   ),
   transports: [
-    // new winston.transports.Console(),
     new winston.transports.File({ filename: 'logs/suspicious_activity.log' }),
   ],
 });
@@ -44,16 +51,25 @@ async function logSuspiciousActivity(ip, message) {
 
 // **Utility: Calculate Block Duration**
 function calculateBlockDuration(offenseCount) {
-  const durations = [600, 1800, 3600, 7200, 86400, 259200, 604800]; // Escalating durations
+  const durations = [600, 1800, 3600, 7200, 86400, 259200, 604800];
   return durations[Math.min(offenseCount - 1, durations.length - 1)];
+}
+
+// **Utility: Calculate Honeypot Offense Weight**
+async function calculateHoneypotWeight(ip, route) {
+  const honeypotKey = `honeypot:${ip}:${route}`;
+  const currentCount = parseInt(await redis.get(honeypotKey), 10) || 0;
+  const updatedCount = currentCount + 1;
+  await redis.set(honeypotKey, updatedCount, 'EX', 60); // Reset count after 1 minute
+  return Math.pow(2, Math.min(updatedCount, 10));
 }
 
 // **Helper: Handle Offenses**
 async function handleOffenses(ip, res, weight = 1) {
   const offenseKey = `offense_count:${ip}`;
   const offenseCount = await redis.incrby(offenseKey, weight);
-  await redis.expire(offenseKey, config.get('offense.resetAfterSeconds')); // Offenses reset after 24 hours
-  offenseCount.inc(); // Increment offense metric
+  await redis.expire(offenseKey, config.get('offense.resetAfterSeconds'));
+  offenseCount.inc();
 
   if (offenseCount === 1) {
     await logSuspiciousActivity(ip, 'Warning issued for suspicious behavior.');
@@ -63,23 +79,28 @@ async function handleOffenses(ip, res, weight = 1) {
   } else if (offenseCount <= 5) {
     const blockDuration = calculateBlockDuration(offenseCount);
     await redis.set(`block:${ip}`, true, 'EX', blockDuration);
-    blockCount.inc(); // Increment block metric
+    blockCount.inc();
     await logSuspiciousActivity(
       ip,
       `Temporary block for ${blockDuration / 60} minutes.`,
     );
     return res.status(429).json({
-      message: `Temporary block for ${blockDuration / 60} minutes.`,
+      error: 'TOO_MANY_REQUESTS',
+      message: 'Temporary block for suspicious activity.',
+      retryAfter: `${blockDuration / 60} minutes`,
+      helpLink: 'https://creativejuicebox.com/help/rate-limiting',
     });
-  } else if (offenseCount > 5) {
+  } else {
     await redis.set(`permanent_block:${ip}`, true, 'EX', 31536000); // 1-year block
     await logSuspiciousActivity(
       ip,
       'Permanent block due to repeated offenses.',
     );
-    return res
-      .status(403)
-      .json({ message: 'IP permanently blocked for 1 year.' });
+    return res.status(403).json({
+      error: 'PERMANENT_BLOCK',
+      message: 'Your IP has been permanently blocked.',
+      helpLink: 'https://creativejuicebox.com/help/account-security',
+    });
   }
 }
 
@@ -131,31 +152,28 @@ async function temporarilyBlockUser(userId, blockDuration) {
 async function behaviorProtection(req, res, next) {
   const ip = req.ip;
   const userAgent = req.get('User-Agent') || 'unknown';
+  const honeypotRoutes = ['/fake-login', '/fake-signup'];
+  const suspiciousUserAgents = ['malicious-bot', 'scanner', 'curl'];
 
-  const suspiciousChecks = [
-    {
-      name: 'Honeypot Access',
-      condition: () => ['/fake-login', '/fake-signup'].includes(req.path),
-      weight: 3,
-    },
-    {
-      name: 'Missing User-Agent',
-      condition: () => !userAgent || userAgent.length < 5,
-      weight: 2,
-    },
-    {
-      name: 'No Content-Type on POST',
-      condition: () => req.method === 'POST' && !req.headers['content-type'],
-      weight: 2,
-    },
-  ];
+  console.log(
+    `Behavior protection triggered for IP: ${ip}, User-Agent: ${userAgent}`,
+  );
 
   let totalWeight = 0;
-  for (const { name, condition, weight } of suspiciousChecks) {
-    if (condition()) {
-      await logSuspiciousActivity(ip, `Triggered: ${name}`);
-      totalWeight += weight;
-    }
+
+  if (suspiciousUserAgents.some((ua) => userAgent.includes(ua))) {
+    await logSuspiciousActivity(
+      ip,
+      `Suspicious User-Agent detected: ${userAgent}`,
+    );
+    userAgentViolationCount.inc();
+    totalWeight += 3;
+  }
+
+  if (honeypotRoutes.includes(req.path)) {
+    const weight = await calculateHoneypotWeight(ip, req.path);
+    honeypotHitCount.inc();
+    totalWeight += weight;
   }
 
   if (totalWeight > 0) {
@@ -167,16 +185,27 @@ async function behaviorProtection(req, res, next) {
     redis.get(`permanent_block:${ip}`),
   ]);
 
-  if (permBlock) {
-    return res
-      .status(403)
-      .json({ message: 'IP permanently blocked for 1 year.' });
+  console.log(`Temp block: ${tempBlock}, Perm block: ${permBlock}`);
+
+  if (!tempBlock && !permBlock) {
+    console.log(`No blocks found for IP: ${ip}`);
   }
 
   if (tempBlock) {
-    return res
-      .status(429)
-      .json({ message: 'Temporary block for suspicious activity.' });
+    return res.status(429).json({
+      error: 'TOO_MANY_REQUESTS',
+      message: 'Temporary block for suspicious activity.',
+      retryAfter: `${calculateBlockDuration(offenseCount) / 60} minutes`,
+      helpLink: 'https://creativejuicebox.com/help/rate-limiting',
+    });
+  }
+
+  if (permBlock) {
+    return res.status(403).json({
+      error: 'PERMANENT_BLOCK',
+      message: 'Your IP has been permanently blocked.',
+      helpLink: 'https://creativejuicebox.com/help/account-security',
+    });
   }
 
   next();
@@ -194,9 +223,11 @@ const rateLimiter = new RateLimiterRedis({
 
 async function rateLimitMiddleware(req, res, next) {
   try {
+    console.log(`Rate limit check for IP: ${req.ip}`);
     await rateLimiter.consume(req.ip);
     next();
   } catch {
+    console.log(`Rate limit exceeded for IP: ${req.ip}`);
     await logSuspiciousActivity(req.ip, 'Rate limit exceeded.');
     res
       .status(429)
@@ -204,11 +235,13 @@ async function rateLimitMiddleware(req, res, next) {
   }
 }
 
-// **Middleware: Honeypot Protection**
+// **Middleware: Honeypot Protection with Exponential Backoff**
 async function honeypot(req, res, next) {
   const honeypotRoutes = ['/fake-login', '/fake-signup'];
   if (honeypotRoutes.includes(req.path)) {
-    return handleOffenses(req.ip, res, 3); // Offense weight for honeypot routes
+    const ip = req.ip;
+    const weight = await calculateHoneypotWeight(ip, req.path);
+    return handleOffenses(ip, res, weight); // Use dynamic weight
   }
   next();
 }
