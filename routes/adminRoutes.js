@@ -21,6 +21,7 @@ const {
   updateBlog,
   deleteBlog,
   deleteAllRejectedCareers,
+  unblockUser,
 } = require('../controllers/adminController');
 const {
   createMeetingValidation,
@@ -47,8 +48,9 @@ const authService = require('../services/authService');
 const router = express.Router();
 
 router.use(authService.protect);
-router.use(trackSuspiciousActivity);
 router.use(authService.allowedTo('admin'));
+
+router.use(trackSuspiciousActivity);
 
 router.get('/get-all-call-sales-services', getAllCallSalesServices);
 router.delete('/delete-service/:id', deleteServiceValidation, deleteService);
@@ -110,5 +112,8 @@ router.put(
 
 router.delete('/delete-blog/:id', deleteMedia(), deleteBlog);
 router.delete('/delete-all-rejected-careers', deleteAllRejectedCareers);
+
+// Admin Route to Reset Blocks
+router.post('/unblock-user', unblockUser);
 
 module.exports = router;

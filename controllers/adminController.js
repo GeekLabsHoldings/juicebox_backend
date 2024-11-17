@@ -10,6 +10,7 @@ const Career = require('../models/careersModel');
 const Meeting = require('../models/meetingModel');
 const Blog = require('../models/blogModel');
 const factory = require('../utils/handlersFactory');
+const { unblockIP, unblockUser } = require('../helpers/botDetectionHelper');
 
 // Get all services that are call-sales
 exports.getAllCallSalesServices = catchError(
@@ -49,7 +50,10 @@ exports.notifyUser = catchError(
 
     // check if user has already been notified for this service
     if (user.notifications.some((n) => n.serviceId.equals(service._id))) {
-      throw new ApiError('User has already been notified for this service', 400);
+      throw new ApiError(
+        'User has already been notified for this service',
+        400,
+      );
     }
 
     user.notifications.push({
@@ -72,7 +76,7 @@ exports.deleteUser = factory.deleteOne(User);
 // Update a service when status is call-sales
 exports.updateService = catchError(
   asyncHandler(async (req, res) => {
-    const { id } = req.params; 
+    const { id } = req.params;
     const updates = req.body;
 
     // Fetch the service by ID
@@ -126,7 +130,6 @@ exports.getAllCareersForVacancy = catchError(
 // delete all careers that status is rejected
 exports.deleteAllRejectedCareers = catchError(
   asyncHandler(async (req, res, next) => {
-
     const careers = await Career.find({ status: 'rejected' });
 
     if (careers.length === 0) {
@@ -246,4 +249,28 @@ exports.updateBlog = factory.updateOne(Blog);
 
 // Delete a blog
 exports.deleteBlog = factory.deleteOne(Blog);
- 
+
+exports.unblockUser = catchError(
+  asyncHandler(async (req, res) => {
+    try {
+      const { ip, userId } = req.body;
+
+      if (!ip && !userId) {
+        return res
+          .status(400)
+          .json({ message: 'Provide either an IP or userId to unblock.' });
+      }
+
+      let message;
+      if (ip) {
+        message = await unblockIP(ip);
+      } else if (userId) {
+        message = await unblockUser(userId);
+      }
+
+      return res.status(200).json({ message });
+    } catch (error) {
+      return res.status(500).json({ message: error.message });
+    }
+  }),
+);

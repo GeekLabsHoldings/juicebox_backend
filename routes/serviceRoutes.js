@@ -23,9 +23,9 @@ const authService = require("../services/authService");
 const router = express.Router();
 
 router.use(authService.protect);
-router.use(trackSuspiciousActivity);
 router.use(authService.allowedTo("user"));
 
+router.use(trackSuspiciousActivity);
 
 router.post("/initialize-service", upload, initializeService);
 router.post("/:id/follow-up-service", continueService);
