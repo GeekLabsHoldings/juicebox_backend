@@ -92,8 +92,8 @@ app.use(passport.session());
 // Input Sanitization
 app.use(mongoSanitize());
 
-app.use(rateLimitMiddleware);
 app.use(behaviorProtection);
+app.use(rateLimitMiddleware);
 
 // Root Route
 app.get('/', (req, res) => {
@@ -108,8 +108,12 @@ const mountRoutes = require('./routes');
 mountRoutes(app);
 
 app.use(honeypot);
-app.post('/fake-login', (req, res) => {});
-app.post('/fake-signup', (req, res) => {});
+app.post('/fake-login', (req, res) => {
+  res.status(200).send({ success: true, message: 'Login successful' });
+});
+app.post('/fake-signup', (req, res) => {
+  res.status(200).send({ success: true, message: 'Signup successful' });
+});
 
 // Handle Not Found Routes
 app.all('*', (req, res, next) => {
