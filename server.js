@@ -16,12 +16,9 @@ const mongoSanitize = require('express-mongo-sanitize');
 const redisClient = require('./config/redis');
 
 const {
-  botProtection,
-} = require('./middlewares/botDetectionMiddleware');
-const {
   rateLimitMiddleware,
-  honeypot,
 } = require('./middlewares/botProtectionMiddleware');
+const { botDetection, honeypot } = require('./middlewares/botDetectionMiddleware');
 const { stripeWebhook } = require('./services/paymentService');
 const ApiError = require('./utils/apiError');
 const globalError = require('./middlewares/errorMiddleware');
@@ -49,34 +46,31 @@ if (process.env.NODE_ENV === 'development') {
   console.log(`Mode: ${process.env.NODE_ENV}`);
 }
 
-app.use(cors({
-  origin: true, // Allow all origins for testing; restrict in production
-  credentials: true,
-}));
+// app.use(cors({
+//   origin: true, // Allow all origins for testing; restrict in production
+//   credentials: true,
+// }));
 
-// // CORS Configuration
-// const allowlist = process.env.ALLOWLIST ? process.env.ALLOWLIST.split(',') : [];
-// app.use(
-//   cors({
-//     origin: (origin, callback) => {
-//       if (allowlist.includes(origin) || !origin) {
-//         callback(null, true);
-//       } else {
-//         callback(new Error('Not allowed by CORS'));
-//       }
-//     },
-//     credentials: true,
-//   }),
-// );
+// CORS Configuration
+const allowlist = process.env.ALLOWLIST ? process.env.ALLOWLIST.split(',') : [];
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (allowlist.includes(origin) || !origin) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
+    credentials: true,
+  }),
+);
 
 // Middleware to Prevent HTTP Parameter Pollution
 app.use(hpp());
 
 // Compression Middleware for Responses
 app.use(compression());
-
-// Static File Serving
-app.use(express.static(path.join(__dirname, 'uploads')));
 
 // Raw Body Parsing for Stripe Webhook (before JSON body parsing)
 app.post(
@@ -95,12 +89,19 @@ app.use(
   }),
 );
 
+// Static File Serving
+app.use(express.static(path.join(__dirname, 'uploads')));
+
 // Initialize Passport for Authentication
 app.use(passport.initialize());
 app.use(passport.session());
 
 // Input Sanitization
 app.use(mongoSanitize());
+
+app.use(rateLimitMiddleware);
+app.use(botDetection);
+app.use(honeypot);
 
 // Root Route
 app.get('/', (req, res) => {
@@ -110,18 +111,7 @@ app.get('/', (req, res) => {
   });
 });
 
-app.use(rateLimitMiddleware);
-app.use(botProtection);
-app.use(honeypot);
-
 mountRoutes(app);
-
-app.post('/fake-login', (req, res) => {
-  res.status(200).send({ success: true, message: 'Login successful' });
-});
-app.post('/fake-signup', (req, res) => {
-  res.status(200).send({ success: true, message: 'Signup successful' });
-});
 
 // Handle Not Found Routes
 app.all('*', (req, res, next) => {
