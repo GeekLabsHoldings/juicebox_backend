@@ -42,7 +42,7 @@ const RULES = {
     duration: 300, // seconds
     globalFailSafeAction: async () => {
       logger.warn('Activating fail-safe. Redirecting traffic.');
-      await redis.set('globalFailSafeActive', true, 'EX', 300);
+      await redis.set('globalFailSafeActive', true, 'EX', 660);
     },
   },
   whitelistedIPs: async () => await redis.smembers('whitelistedIPs'),
