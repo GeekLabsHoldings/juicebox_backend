@@ -96,8 +96,8 @@ app.use(express.static(path.join(__dirname, 'uploads')));
 
 // Middleware: Custom Middlewares
 app.use(failSafe);
-app.use(enhancedBotDetection);
 app.use(honeypot);
+app.use(enhancedBotDetection);
 app.use(rateLimitMiddleware);
 
 // Middleware: Passport Initialization
