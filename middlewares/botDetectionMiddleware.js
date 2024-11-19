@@ -56,16 +56,20 @@ const logActivity = async (type, details) => {
 // Middleware: Enhanced Bot Detection
 const enhancedBotDetection = async (req, res, next) => {
   const ip = req.ip;
-  const userAgentString = req.headers['user-agent'] || 'unknown';
+  const userAgentString = req.headers['user-agent'] || "unknown";
   const now = Date.now();
   const blockKey = `bot_block:${ip}`;
 
+  // Define invalid User-Agent strings
+  const invalidUserAgents = ["", "unknown", "Mozilla/5.0"];
+
   try {
+    // Check if IP is already blocked
     const blockStatus = await redis.get(blockKey);
 
     if (blockStatus) {
       const remainingTime = Math.ceil((parseInt(blockStatus) - now) / 1000);
-      res.setHeader('Retry-After', remainingTime);
+      res.setHeader("Retry-After", remainingTime);
       return res
         .status(403)
         .json({ message: `Blocked. Retry after ${remainingTime} seconds.` });
@@ -75,27 +79,29 @@ const enhancedBotDetection = async (req, res, next) => {
     const agent = useragent.parse(userAgentString);
     const isBot =
       RULES.botDetection.suspiciousUserAgentPatterns.some((pattern) =>
-        pattern.test(userAgentString.toLowerCase()),
+        pattern.test(userAgentString.toLowerCase())
       ) ||
-      agent.device.family === 'Spider' ||
-      agent.device.family === 'Bot';
+      invalidUserAgents.includes(userAgentString) ||
+      agent.device.family === "Spider" ||
+      agent.device.family === "Bot";
 
     if (isBot) {
+      // Block the IP and log activity
       const blockDuration = RULES.blocking.baseBlockDuration;
       await redis.set(
         blockKey,
         now + blockDuration * 1000,
-        'EX',
-        blockDuration,
+        "EX",
+        blockDuration
       );
-      await logActivity('BOT_DETECTION', { ip, userAgent: userAgentString });
-      return res.status(403).json({ message: 'Bot detected. Access denied.' });
+      await logActivity("BOT_DETECTION", { ip, userAgent: userAgentString });
+      return res.status(403).json({ message: "Bot detected. Access denied." });
     }
 
     next();
   } catch (err) {
-    logger.error('[ERROR] Bot Detection:', err);
-    return res.status(503).send('Service unavailable.');
+    logger.error("[ERROR] Bot Detection:", err);
+    return res.status(503).send("Service unavailable.");
   }
 };
 
