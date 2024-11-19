@@ -6,16 +6,15 @@ const createLogger = require('../utils/logger');
 // Create a logger instance for this module
 const logger = createLogger('rateLimiter.log');
 
-// Rate Limiter Configuration
+// Centralized Configuration
 const rateLimiterConfig = {
   keyPrefix: 'rate-limit',
-  points: 20, // Allowed requests per duration
-  duration: 10, // Time window in seconds
-  warningThreshold: 10, // Requests triggering warnings
-  temporaryBlockDuration: 15 * 60, // 15 minutes in seconds
-  permanentBlockThreshold: 5, // Offense count for permanent block
-  permanentBlockDuration: 24 * 60 * 60, // 24 hours in seconds
-  frequentRequestInterval: 500, // Frequent requests threshold in milliseconds
+  points: 20, // Allowed requests per window
+  duration: 10, // Window in seconds
+  warningThreshold: 10,
+  baseTemporaryBlockDuration: 10 * 60, // 10 minutes
+  escalationFactor: 1.5, // Exponential backoff factor for blocks
+  decayTime: 30 * 60, // Reset offense count after inactivity (30 mins)
 };
 
 // Create RateLimiter Instance
@@ -26,95 +25,91 @@ const rateLimiter = new RateLimiterRedis({
   duration: rateLimiterConfig.duration,
 });
 
-// Helper: Log Suspicious Activity
-async function logActivity(ip, message) {
-  const timestamp = new Date().toISOString();
-  const logKey = `suspicious_activity:${ip}`;
-  const logEntry = `${timestamp}: ${message}`;
+// Helper: Handle Offense and Escalation
+async function handleOffense(ip, res) {
+  const offenseKey = `offense_count:${ip}`;
+  const offenseData = JSON.parse((await redis.get(offenseKey)) || '{}');
+  const currentOffenses = offenseData.count || 0;
+  const lastOffenseTime = offenseData.timestamp || 0;
 
-  // Log to Redis
-  await redis.lpush(logKey, logEntry);
-  await redis.expire(logKey, rateLimiterConfig.temporaryBlockDuration);
-
-  // Log to file
-  logger.info({ ip, message });
-}
-
-// Helper: Handle Offense and Block Logic
-async function handleOffense(ip, currentOffenses, res) {
-  currentOffenses++;
-  const offenseKey = `offenses:${ip}`;
-
-  if (currentOffenses >= rateLimiterConfig.permanentBlockThreshold) {
-    await redis.set(
-      `block_rate:${ip}`,
-      'permanent',
-      'EX',
-      rateLimiterConfig.permanentBlockDuration,
+  const now = Date.now();
+  if (now - lastOffenseTime > rateLimiterConfig.decayTime * 1000) {
+    // Reset offense count after decay time
+    offenseData.count = 1;
+  } else {
+    // Increment offense count with dynamic scoring
+    offenseData.count += Math.ceil(
+      Math.log10(currentOffenses + 1) * rateLimiterConfig.escalationFactor,
     );
-    await logActivity(ip, 'User permanently blocked due to repeated offenses.');
-    return res.status(403).json({ message: 'Access permanently denied.' });
   }
+  offenseData.timestamp = now;
 
-  const blockDuration =
-    Math.pow(2, currentOffenses) * rateLimiterConfig.temporaryBlockDuration;
-  await redis.set(`block_rate:${ip}`, 'temporary', 'EX', blockDuration);
+  // Save updated offense data
   await redis.set(
     offenseKey,
-    currentOffenses,
+    JSON.stringify(offenseData),
     'EX',
-    rateLimiterConfig.permanentBlockDuration,
+    rateLimiterConfig.decayTime,
   );
 
-  await logActivity(
-    ip,
-    `User temporarily blocked for ${blockDuration / 60} minutes due to exceeding rate limits.`,
+  const blockDuration = Math.round(
+    rateLimiterConfig.baseTemporaryBlockDuration *
+      Math.pow(rateLimiterConfig.escalationFactor, offenseData.count),
   );
-  return res
-    .status(429)
-    .json({ message: 'Access temporarily denied. Try again later.' });
+
+  // Apply block
+  await redis.set(`rate_block:${ip}`, 'temporary', 'EX', blockDuration);
+  logger.warn(`IP ${ip} blocked for ${blockDuration / 60} minutes.`);
+  return res.status(429).json({
+    message: `You have been temporarily blocked. Please try again after ${blockDuration / 60} minutes.`,
+  });
 }
 
-// Middleware: Rate Limiting and Frequent Request Detection
-const rateLimitMiddleware = async (req, res, next) => {
-  const ip = req.ip;
-  const offenseKey = `offenses:${ip}`;
-  const frequentKey = `frequent:${ip}`;
-  const currentOffenses = parseInt(await redis.get(offenseKey), 10) || 0;
+// Helper: Reset Offense Count for a Specific IP
+async function resetOffenseForNormalBehavior(ip) {
+  const offenseKey = `offense_count:${ip}`;
+  const offenseData = JSON.parse((await redis.get(offenseKey)) || '{}');
+  
+  if (!offenseData.count) return; // No offenses recorded for this IP
+
+  const lastOffenseTime = offenseData.timestamp || 0;
   const now = Date.now();
 
-  // Check for existing block
-  const blockStatus = await redis.get(`block_rate:${ip}`);
-  if (blockStatus === 'permanent') {
-    return res.status(403).json({ message: 'Access permanently denied.' });
+  // If the IP has behaved well for the decay period
+  if (now - lastOffenseTime > rateLimiterConfig.decayTime * 1000) {
+    // Reset offense count
+    await redis.del(offenseKey);
+    logger.info(`Offense count for IP ${ip} has been reset due to improved behavior.`);
   }
-  if (blockStatus === 'temporary') {
-    return res
-      .status(429)
-      .json({ message: 'Access temporarily denied. Try again later.' });
+}
+
+// Middleware: Rate Limiting with Dynamic Offense Management
+const rateLimitMiddleware = async (req, res, next) => {
+  const ip = req.ip;
+
+  // Check existing block
+  const blockStatus = await redis.get(`rate_block:${ip}`);
+  if (blockStatus) {
+    const blockMessage =
+      blockStatus === 'permanent'
+        ? 'Access permanently denied.'
+        : 'Access temporarily denied. Try again later.';
+    return res.status(blockStatus === 'permanent' ? 403 : 429).json({
+      message: blockMessage,
+    });
   }
 
   try {
-    // Consume a point from rate limiter
+    // Consume points from rate limiter
     await rateLimiter.consume(ip);
 
-    // Check for frequent requests
-    const lastRequestTime = parseInt(await redis.get(frequentKey), 10) || 0;
-    const timeSinceLastRequest = now - lastRequestTime;
-
-    if (timeSinceLastRequest <= rateLimiterConfig.frequentRequestInterval) {
-      await logActivity(ip, 'Frequent requests detected.');
-      await handleOffense(ip, currentOffenses, res);
-      return;
-    }
-
-    // Update the frequent request tracking key
-    await redis.set(frequentKey, now, 'EX', rateLimiterConfig.duration);
-
+    // Check if the IP has behaved normally and reset offenses
+    await resetOffenseForNormalBehavior(ip);
+    
     next();
   } catch (rateLimiterRes) {
-    // Offense escalation and blocking logic
-    await handleOffense(ip, currentOffenses, res);
+    // Handle offenses if rate limit exceeded
+    await handleOffense(ip, res);
   }
 };
 

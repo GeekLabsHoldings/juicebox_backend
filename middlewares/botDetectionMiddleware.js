@@ -73,9 +73,12 @@ const enhancedBotDetection = async (req, res, next) => {
 
     // Parse the User-Agent string using useragent
     const agent = useragent.parse(userAgentString);
-    const isBot = RULES.botDetection.suspiciousUserAgentPatterns.some(
-      (pattern) => pattern.test(userAgentString.toLowerCase()),
-    ) || agent.device.family === 'Spider' || agent.device.family === 'Bot';
+    const isBot =
+      RULES.botDetection.suspiciousUserAgentPatterns.some((pattern) =>
+        pattern.test(userAgentString.toLowerCase()),
+      ) ||
+      agent.device.family === 'Spider' ||
+      agent.device.family === 'Bot';
 
     if (isBot) {
       const blockDuration = RULES.blocking.baseBlockDuration;
@@ -100,9 +103,14 @@ const enhancedBotDetection = async (req, res, next) => {
 const honeypot = async (req, res, next) => {
   const ip = req.ip;
   const redisKey = `honeypot:${ip}`;
-  if (await RULES.whitelistedIPs().includes(ip)) return next();
 
   try {
+    // Await the resolved array of whitelisted IPs
+    const whitelistedIPs = await RULES.whitelistedIPs();
+
+    // Check if the IP is in the whitelist
+    if (whitelistedIPs.includes(ip)) return next();
+
     const isHoneypotTrigger =
       RULES.honeypot.fakeEndpoints.includes(req.path) ||
       RULES.honeypot.decoyAssets.some((asset) => req.path.includes(asset));
