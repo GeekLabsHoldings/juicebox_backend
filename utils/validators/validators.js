@@ -67,10 +67,17 @@ const checkBirthDate = (fieldName, location = 'body') =>
     .custom((value) => {
       const inputDate = new Date(value);
       const today = new Date();
-      const minAgeDate = new Date(today.setFullYear(today.getFullYear() - 16));
 
+      // Minimum age check (16 years old)
+      const minAgeDate = new Date(today.setFullYear(today.getFullYear() - 16));
       if (inputDate > minAgeDate) {
         throw new ApiError('You must be at least 16 years old', 400);
+      }
+
+      // Maximum age check (120 years old)
+      const maxAgeDate = new Date(today.setFullYear(today.getFullYear() - 120));
+      if (inputDate < maxAgeDate) {
+        throw new ApiError('You cannot be older than 120 years', 400);
       }
 
       return true;
@@ -93,7 +100,7 @@ const checkExists = async (model, id) => {
 };
 
 // check status of model
-const checkStatus = async (model, id, statusValue, operator) => { 
+const checkStatus = async (model, id, statusValue, operator) => {
   const document = await model.findById(id);
 
   if (!document) {
@@ -116,7 +123,10 @@ const checkStatus = async (model, id, statusValue, operator) => {
 
   // If the condition matches, throw an error
   if (statusMatches) {
-    throw new ApiError(errors.invalidStatus(model.modelName, id, document.status), 400);
+    throw new ApiError(
+      errors.invalidStatus(model.modelName, id, document.status),
+      400,
+    );
   }
 };
 
