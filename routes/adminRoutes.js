@@ -45,6 +45,7 @@ const {
 } = require('../middlewares/botProtectionMiddleware');
 
 const authService = require('../services/authService');
+const userService = require('../services/userService');
 
 const router = express.Router();
 
@@ -60,7 +61,8 @@ router.put('/update-service/:id', updateService);
 router.patch('/update-process-service-option/:id', updateProcessServiceOption);
 router.post('/make-process-service', createProcessValidation, makeProcessService);
 router.put('/update-process-service/:id', updateProcessValidation, updateProcessService);
-router.get('/get-all-users', getAllUsers);
+router.get('/get-all-users', userService.getUsersByRole('user'), getAllUsers);
+router.get('/get-all-admin-users', userService.getUsersByRole('admin'), getAllUsers);
 router.post('/notify-user', notifyUser);
 router.post('/add-new-vacancy', vacancyValidationRules, addNewVacancy);
 router.put('/update-vacancy/:id', updateVacancyValidationRules, updateVacancy);
