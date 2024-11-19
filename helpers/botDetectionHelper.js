@@ -3,16 +3,16 @@ const User = require('../models/userModel');
 
 // Helper: Unblock an IP
 async function unblockIP(ip) {
+  // Remove block-related keys for the IP in Redis
   await Promise.all([
-    redis.del(`block:${ip}`),          // Remove temporary block
-    redis.del(`permanent_block:${ip}`), // Remove permanent block
-    redis.del(`offense_count:${ip}`), // Reset offense count
+    redis.del(`block_bot:${ip}`),          // Remove temporary block for bot behavior
+    redis.del(`block_rate:${ip}`), // Remove temporary block for rate limiting
   ]);
   return `IP ${ip} unblocked successfully.`;
 }
 
 // Helper: Unblock a User
-async function unblockUser(userId) {
+async function unblockUserById(userId) {
   const user = await User.findById(userId);
   if (!user) {
     throw new Error('User not found');
@@ -23,7 +23,13 @@ async function unblockUser(userId) {
   return `User ${user.email} unblocked successfully.`;
 }
 
+// Helper: Get IP from the request
+function getIpFromRequest(req) {
+  return req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+}
+
 module.exports = {
-  unblockUser,
+  unblockUserById,
   unblockIP,
+  getIpFromRequest,
 };

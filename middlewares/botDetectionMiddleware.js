@@ -1,205 +1,174 @@
 const redis = require('../config/ioredis');
+const useragent = require('useragent');
+const createLogger = require('../utils/logger');
 
-// Central Configuration for Dynamic Rules
+// Create a logger instance for this module
+const logger = createLogger();
+
+// Configuration for Rules
 const RULES = {
-  requestLimit: 100,
-  timeWindow: 60,
-  burstLimit: 20,
-  burstWindow: 5,
-  baseBlockDuration: 15 * 60,
-  maxBlockDuration: 30 * 24 * 60 * 60,
-  escalationFactor: 2,
-  suspiciousUserAgentPatterns: [/bot/i, /crawler/i, /spider/i],
-  honeypotEnabled: true,
-  failSafeRate: 0.1,
-  honeypot: {
-    fakeEndpoints: ['/hidden-api', '/private/debug'],
-    hiddenFieldName: 'hidden_token',
-    decoyAssets: ['/hidden-asset.js', '/private/resource.png'],
-    fakeResponseText: 'This is a honeypot trap.',
-    permanentBlockThreshold: 5,
+  requestLimits: {
+    globalRequestLimit: 2000,
+    userRequestLimit: 100,
+    timeWindow: 60, // seconds
+    burstLimit: 50,
+    burstWindow: 10, // seconds
+    rateAdjustmentFactor: 1.2,
   },
+  blocking: {
+    baseBlockDuration: 10 * 60, // 10 minutes
+    maxBlockDuration: 7 * 24 * 60 * 60, // 7 days
+    escalationFactor: 2,
+    blockDecayRate: 0.33, // Reduce block duration daily by 33%
+  },
+  botDetection: {
+    suspiciousUserAgentPatterns: [
+      /bot|crawler|spider|scraper|headless|selenium|phantomjs/i,
+    ],
+    logUnknownUserAgents: true,
+    customBotIPs: async () => await redis.smembers('customBotIPs'),
+  },
+  honeypot: {
+    enabled: true,
+    fakeEndpoints: ['/trap-api', '/forbidden/secret'],
+    hiddenFieldName: () => `fake_field_${Math.random().toString(36).slice(2)}`,
+    decoyAssets: ['/fake.js', '/bait.png'],
+    fakeResponseText: 'Access forbidden.',
+    permanentBlockThreshold: 3,
+  },
+  failSafe: {
+    enabled: true,
+    maxAllowedRequests: 1000,
+    duration: 300, // seconds
+    globalFailSafeAction: async () => {
+      logger.warn('Activating fail-safe. Redirecting traffic.');
+      await redis.set('globalFailSafeActive', true, 'EX', 300);
+    },
+  },
+  whitelistedIPs: async () => await redis.smembers('whitelistedIPs'),
 };
 
-// Fail-safe: fallback behavior
-const failSafeFallback = (req, res, next) => {
-  console.warn(`Fail-safe triggered for IP: ${req.ip}, path: ${req.path}`);
-  next();
+// Utility: Logging
+const logActivity = async (type, details) => {
+  logger.info({ type, details, timestamp: new Date() });
 };
 
-// Utility: Calculate Dynamic Block Duration
-function calculateBlockDuration(previousDuration, escalationFactor) {
-  return Math.min(previousDuration * escalationFactor, RULES.maxBlockDuration);
-}
-
-// Middleware: Advanced Bot Detection
-async function botDetection(req, res, next) {
+// Middleware: Enhanced Bot Detection
+const enhancedBotDetection = async (req, res, next) => {
   const ip = req.ip;
-  const userAgent = req.headers['user-agent'] || 'unknown';
+  const userAgentString = req.headers['user-agent'] || 'unknown';
   const now = Date.now();
-  const redisKey = `bot:${ip}`;
-  const redisBlockKey = `block:${ip}`;
+  const blockKey = `bot_block:${ip}`;
 
   try {
-    // Fail-safe if Redis is down
-    if (!redis.status || redis.status !== 'ready') {
-      return failSafeFallback(req, res, next);
-    }
+    const blockStatus = await redis.get(blockKey);
 
-    // Check Block Status
-    const blockStatus = await redis.get(redisBlockKey);
     if (blockStatus) {
-      const { level, expiresAt, duration } = JSON.parse(blockStatus);
-      console.log(
-        `Block info for ${ip}: Level: ${level}, Expires At: ${new Date(expiresAt).toISOString()}, Duration: ${duration}`,
-      );
-      if (expiresAt > now) {
-        const blockMessage =
-          level === 'PERMANENT_BLOCK'
-            ? 'Your IP is permanently blocked.'
-            : 'Your IP is temporarily blocked.';
-        return res.status(403).json({ message: blockMessage });
-      }
-    }
-
-    // User-Agent Analysis
-    if (
-      RULES.suspiciousUserAgentPatterns.some((pattern) =>
-        pattern.test(userAgent),
-      )
-    ) {
-      const duration = calculateBlockDuration(
-        RULES.baseBlockDuration,
-        RULES.escalationFactor,
-      );
-      await escalateBlocking(ip, redisBlockKey, 'TEMPORARY_BLOCK', duration);
-      return res.status(403).json({
-        message: 'Suspicious activity detected. Access temporarily blocked.',
-      });
-    }
-
-    // Request Pattern Analysis
-    const requestData = await redis.get(redisKey);
-    let requestInfo = requestData
-      ? JSON.parse(requestData)
-      : { count: 0, firstRequestAt: now, violations: 0 };
-
-    // Burst Check
-    if (now - requestInfo.firstRequestAt <= RULES.burstWindow * 1000) {
-      requestInfo.count += 1;
-      if (requestInfo.count > RULES.burstLimit) {
-        const duration = calculateBlockDuration(
-          RULES.baseBlockDuration,
-          ++requestInfo.violations,
-        );
-        await escalateBlocking(ip, redisBlockKey, 'TEMPORARY_BLOCK', duration);
-        return res
-          .status(429)
-          .json({ message: 'Too many requests. You are temporarily blocked.' });
-      }
-    } else {
-      requestInfo.count = 1; // Reset for next burst window
-    }
-
-    // Rate Limiting
-    requestInfo.count += 1;
-    if (requestInfo.count > RULES.requestLimit) {
-      const duration = calculateBlockDuration(
-        RULES.baseBlockDuration,
-        ++requestInfo.violations,
-      );
-      await escalateBlocking(ip, redisBlockKey, 'TEMPORARY_BLOCK', duration);
+      const remainingTime = Math.ceil((parseInt(blockStatus) - now) / 1000);
+      res.setHeader('Retry-After', remainingTime);
       return res
-        .status(429)
-        .json({ message: 'Rate limit exceeded. Slow down.' });
+        .status(403)
+        .json({ message: `Blocked. Retry after ${remainingTime} seconds.` });
     }
 
-    // Time Window Reset
-    if (now - requestInfo.firstRequestAt > RULES.timeWindow * 1000) {
-      requestInfo = { count: 1, firstRequestAt: now, violations: 0 };
-    }
+    // Parse the User-Agent string using useragent
+    const agent = useragent.parse(userAgentString);
+    const isBot = RULES.botDetection.suspiciousUserAgentPatterns.some(
+      (pattern) => pattern.test(userAgentString.toLowerCase()),
+    ) || agent.device.family === 'Spider' || agent.device.family === 'Bot';
 
-    // Save Request Data
-    await redis.set(
-      redisKey,
-      JSON.stringify(requestInfo),
-      'EX',
-      RULES.timeWindow,
-    );
+    if (isBot) {
+      const blockDuration = RULES.blocking.baseBlockDuration;
+      await redis.set(
+        blockKey,
+        now + blockDuration * 1000,
+        'EX',
+        blockDuration,
+      );
+      await logActivity('BOT_DETECTION', { ip, userAgent: userAgentString });
+      return res.status(403).json({ message: 'Bot detected. Access denied.' });
+    }
 
     next();
   } catch (err) {
-    console.error('Bot detection middleware error:', err);
-    failSafeFallback(req, res, next);
+    logger.error('[ERROR] Bot Detection:', err);
+    return res.status(503).send('Service unavailable.');
   }
-}
+};
 
-// Escalate Blocking Logic
-async function escalateBlocking(ip, redisBlockKey, level, duration) {
-  const blockInfo = {
-    level,
-    expiresAt: Date.now() + duration * 1000,
-    duration, // Track current duration for future adjustments
-  };
-  await redis.set(redisBlockKey, JSON.stringify(blockInfo), 'EX', duration);
-  console.log(`IP ${ip} escalated to ${level} for ${duration} seconds`);
-}
-
-// Honeypot Middleware
-async function honeypot(req, res, next) {
-  if (!RULES.honeypotEnabled) return next();
-
+// Middleware: Honeypot Detection
+const honeypot = async (req, res, next) => {
   const ip = req.ip;
   const redisKey = `honeypot:${ip}`;
+  if (await RULES.whitelistedIPs().includes(ip)) return next();
 
-  // Detect Honeypot Interactions
-  if (
-    RULES.honeypot.fakeEndpoints.includes(req.path) ||
-    RULES.honeypot.decoyAssets.some((asset) => req.path.includes(asset))
-  ) {
-    console.log(`Honeypot triggered by IP: ${ip}`);
+  try {
+    const isHoneypotTrigger =
+      RULES.honeypot.fakeEndpoints.includes(req.path) ||
+      RULES.honeypot.decoyAssets.some((asset) => req.path.includes(asset));
 
-    // Track and escalate honeypot interaction
-    const honeypotData = await redis.get(redisKey);
-    let honeypotInfo = honeypotData
-      ? JSON.parse(honeypotData)
-      : { triggers: 0, lastTriggeredAt: Date.now() };
+    if (isHoneypotTrigger) {
+      const honeypotInfo = JSON.parse((await redis.get(redisKey)) || '{}');
+      honeypotInfo.triggers = (honeypotInfo.triggers || 0) + 1;
 
-    honeypotInfo.triggers += 1;
-    honeypotInfo.lastTriggeredAt = Date.now();
+      if (honeypotInfo.triggers >= RULES.honeypot.permanentBlockThreshold) {
+        await redis.set(
+          redisKey,
+          JSON.stringify(honeypotInfo),
+          'EX',
+          RULES.blocking.maxBlockDuration,
+        );
+        return res
+          .status(403)
+          .json({ message: 'Permanently blocked due to honeypot triggers.' });
+      }
 
-    // Escalate blocking for repeated interactions
-    if (honeypotInfo.triggers >= RULES.honeypot.permanentBlockThreshold) {
-      await escalateBlocking(
-        ip,
+      const blockDuration =
+        honeypotInfo.triggers * RULES.blocking.baseBlockDuration;
+      await redis.set(
         redisKey,
-        'PERMANENT_BLOCK',
-        RULES.maxBlockDuration,
+        JSON.stringify(honeypotInfo),
+        'EX',
+        blockDuration,
       );
-      return res.status(403).json({ message: 'Access permanently denied.' });
+      return res.status(403).json({ message: RULES.honeypot.fakeResponseText });
     }
 
-    const duration = calculateBlockDuration(
-      RULES.baseBlockDuration,
-      honeypotInfo.triggers,
-    );
-    await escalateBlocking(ip, redisKey, 'HONEYPOT_TRIGGER', duration);
-
-    // Save Honeypot Interaction Data
-    await redis.set(
-      redisKey,
-      JSON.stringify(honeypotInfo),
-      'EX',
-      RULES.timeWindow,
-    );
-
-    return res.status(403).json({ message: RULES.honeypot.fakeResponseText });
+    next();
+  } catch (err) {
+    logger.error('[ERROR] Honeypot Detection:', err);
+    next();
   }
-
-  next();
-}
-
-module.exports = {
-  botDetection,
-  honeypot,
 };
+
+// Middleware: Fail-Safe Mechanism
+const failSafe = async (req, res, next) => {
+  try {
+    const failSafeStatus = await redis.get('globalFailSafeActive');
+    if (failSafeStatus) {
+      return res
+        .status(503)
+        .json({ message: 'Service temporarily unavailable.' });
+    }
+
+    const requestCount = await redis.incr('globalRequestCount');
+    if (requestCount === 1) {
+      await redis.expire('globalRequestCount', RULES.failSafe.duration);
+    }
+
+    if (requestCount > RULES.failSafe.maxAllowedRequests) {
+      await RULES.failSafe.globalFailSafeAction();
+      return res
+        .status(503)
+        .json({ message: 'Service temporarily unavailable.' });
+    }
+
+    next();
+  } catch (err) {
+    logger.error('[ERROR] Fail-Safe Mechanism:', err);
+    next();
+  }
+};
+
+// Export Middleware
+module.exports = { enhancedBotDetection, honeypot, failSafe };

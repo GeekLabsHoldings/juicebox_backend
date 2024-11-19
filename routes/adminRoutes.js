@@ -22,6 +22,7 @@ const {
   deleteBlog,
   deleteAllRejectedCareers,
   unblockUser,
+  getIp,
 } = require('../controllers/adminController');
 const {
   createMeetingValidation,
@@ -115,5 +116,7 @@ router.delete('/delete-all-rejected-careers', deleteAllRejectedCareers);
 
 // Admin Route to Reset Blocks
 router.post('/unblock-user', unblockUser);
+
+router.get('/get-ip', getIp);
 
 module.exports = router;

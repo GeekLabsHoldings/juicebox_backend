@@ -10,7 +10,11 @@ const Career = require('../models/careersModel');
 const Meeting = require('../models/meetingModel');
 const Blog = require('../models/blogModel');
 const factory = require('../utils/handlersFactory');
-const { unblockIP, unblockUser } = require('../helpers/botDetectionHelper');
+const {
+  unblockIP,
+  unblockUserById,
+  getIpFromRequest,
+} = require('../helpers/botDetectionHelper');
 
 // Get all services that are call-sales
 exports.getAllCallSalesServices = catchError(
@@ -250,27 +254,43 @@ exports.updateBlog = factory.updateOne(Blog);
 // Delete a blog
 exports.deleteBlog = factory.deleteOne(Blog);
 
+// Controller: Unblock User or IP
 exports.unblockUser = catchError(
   asyncHandler(async (req, res) => {
+    const { userId } = req.body;
+    const ip = getIpFromRequest(req);
+
+    if (!userId && !ip) {
+      return res
+        .status(400)
+        .json({
+          message:
+            'Provide either a userId or ensure the request IP is available.',
+        });
+    }
+
     try {
-      const { ip, userId } = req.body;
-
-      if (!ip && !userId) {
-        return res
-          .status(400)
-          .json({ message: 'Provide either an IP or userId to unblock.' });
-      }
-
       let message;
+
       if (ip) {
+        // Unblock by IP
         message = await unblockIP(ip);
       } else if (userId) {
-        message = await unblockUser(userId);
+        // Unblock by User ID
+        message = await unblockUserById(userId);
       }
 
       return res.status(200).json({ message });
     } catch (error) {
       return res.status(500).json({ message: error.message });
     }
+  }),
+);
+
+// Controller: Get Request IP
+exports.getIp = catchError(
+  asyncHandler(async (req, res) => {
+    const ip = getIpFromRequest(req);
+    res.status(200).json({ ip });
   }),
 );
