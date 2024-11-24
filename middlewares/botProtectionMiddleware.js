@@ -1,23 +1,24 @@
 const { RateLimiterRedis } = require('rate-limiter-flexible');
 const User = require('../models/userModel');
 const redis = require('../config/ioredis');
+const requestIp = require('request-ip');
 const { createLogger } = require('../utils/logger');
 
-// Create a logger instance for this module
+// Logger setup
 const logger = createLogger('rateLimiter.log');
 
-// Centralized Configuration
+// Rate limiter configuration
 const rateLimiterConfig = {
   keyPrefix: 'rate-limit',
   points: 20, // Allowed requests per window
-  duration: 10, // Window in seconds
+  duration: 10, // Window duration in seconds
   warningThreshold: 10,
   baseTemporaryBlockDuration: 10 * 60, // 10 minutes
-  escalationFactor: 1.5, // Exponential backoff factor for blocks
-  decayTime: 30 * 60, // Reset offense count after inactivity (30 mins)
+  escalationFactor: 1.5,
+  decayTime: 30 * 60, // Reset offenses after 30 minutes
 };
 
-// Create RateLimiter Instance
+// Rate limiter instance
 const rateLimiter = new RateLimiterRedis({
   storeClient: redis,
   keyPrefix: rateLimiterConfig.keyPrefix,
@@ -25,7 +26,10 @@ const rateLimiter = new RateLimiterRedis({
   duration: rateLimiterConfig.duration,
 });
 
-// Helper: Handle Offense and Escalation
+// Get real client IP
+const getClientIp = (req) => requestIp.getClientIp(req) || req.ip;
+
+// Handle offenses and dynamic blocking
 async function handleOffense(ip, res) {
   const offenseKey = `offense_count:${ip}`;
   const offenseData = JSON.parse((await redis.get(offenseKey)) || '{}');
@@ -33,18 +37,22 @@ async function handleOffense(ip, res) {
   const lastOffenseTime = offenseData.timestamp || 0;
 
   const now = Date.now();
-  if (now - lastOffenseTime > rateLimiterConfig.decayTime * 1000) {
-    // Reset offense count after decay time
-    offenseData.count = 1;
-  } else {
-    // Increment offense count with dynamic scoring
-    offenseData.count += Math.ceil(
-      Math.log10(currentOffenses + 1) * rateLimiterConfig.escalationFactor,
-    );
-  }
+  offenseData.count =
+    now - lastOffenseTime > rateLimiterConfig.decayTime * 1000
+      ? 1
+      : offenseData.count +
+        Math.ceil(
+          Math.log10(currentOffenses + 1) * rateLimiterConfig.escalationFactor,
+        );
+
   offenseData.timestamp = now;
 
-  // Save updated offense data
+  const blockDuration = Math.round(
+    rateLimiterConfig.baseTemporaryBlockDuration *
+      Math.pow(rateLimiterConfig.escalationFactor, offenseData.count),
+  );
+
+  await redis.set(`rate_block:${ip}`, 'temporary', 'EX', blockDuration);
   await redis.set(
     offenseKey,
     JSON.stringify(offenseData),
@@ -52,167 +60,85 @@ async function handleOffense(ip, res) {
     rateLimiterConfig.decayTime,
   );
 
-  const blockDuration = Math.round(
-    rateLimiterConfig.baseTemporaryBlockDuration *
-      Math.pow(rateLimiterConfig.escalationFactor, offenseData.count),
+  logger.warn(
+    `IP ${ip} temporarily blocked for ${blockDuration / 60} minutes.`,
   );
-
-  // Apply block
-  await redis.set(`rate_block:${ip}`, 'temporary', 'EX', blockDuration);
-  logger.warn(`IP ${ip} blocked for ${blockDuration / 60} minutes.`);
   return res.status(429).json({
-    message: `You have been temporarily blocked. Please try again after ${blockDuration / 60} minutes.`,
+    message: `You have been temporarily blocked. Retry after ${blockDuration / 60} minutes.`,
   });
 }
 
-// Helper: Reset Offense Count for a Specific IP
-async function resetOffenseForNormalBehavior(ip) {
-  const offenseKey = `offense_count:${ip}`;
-  const offenseData = JSON.parse((await redis.get(offenseKey)) || '{}');
-  
-  if (!offenseData.count) return; // No offenses recorded for this IP
-
-  const lastOffenseTime = offenseData.timestamp || 0;
-  const now = Date.now();
-
-  // If the IP has behaved well for the decay period
-  if (now - lastOffenseTime > rateLimiterConfig.decayTime * 1000) {
-    // Reset offense count
-    await redis.del(offenseKey);
-    logger.info(`Offense count for IP ${ip} has been reset due to improved behavior.`);
-  }
-}
-
-// Middleware: Rate Limiting with Dynamic Offense Management
+// Middleware: Rate limiting
 const rateLimitMiddleware = async (req, res, next) => {
-  const ip = req.ip;
+  const ip = getClientIp(req);
 
-  // Check existing block
   const blockStatus = await redis.get(`rate_block:${ip}`);
   if (blockStatus) {
-    const blockMessage =
-      blockStatus === 'permanent'
-        ? 'Access permanently denied.'
-        : 'Access temporarily denied. Try again later.';
-    return res.status(blockStatus === 'permanent' ? 403 : 429).json({
-      message: blockMessage,
+    return res.status(429).json({
+      message:
+        blockStatus === 'permanent'
+          ? 'Access permanently denied.'
+          : 'Access temporarily denied. Try again later.',
     });
   }
 
   try {
-    // Consume points from rate limiter
     await rateLimiter.consume(ip);
-
-    // Check if the IP has behaved normally and reset offenses
-    await resetOffenseForNormalBehavior(ip);
-    
     next();
   } catch (rateLimiterRes) {
-    // Handle offenses if rate limit exceeded
     await handleOffense(ip, res);
   }
 };
 
-/* Middleware: Track Suspicious Activity */
-async function handleUserBlock(user, offenseCount, res) {
-  const currentTime = Date.now();
+// Middleware: Suspicious activity tracking
+const trackSuspiciousActivity = async (req, res, next) => {
+  const ip = getClientIp(req);
+  const user = req.user;
 
-  // Escalate block duration dynamically based on offense count
-  const baseBlockDuration = 10 * 60 * 1000; // 10 minutes in milliseconds
-  const escalationFactor = 1.5; // Adjust penalty multiplier
-  const blockDuration = Math.round(
-    baseBlockDuration * Math.pow(offenseCount, escalationFactor),
-  );
+  const requestKey = `requests:${ip}`;
+  const requestCount = parseInt(await redis.get(requestKey), 10) || 0;
 
-  // Check if the user is already blocked
-  if (user.isBlocked && user.blockExpiresAt > currentTime) {
+  const offenseCount =
+    requestCount > rateLimiterConfig.warningThreshold
+      ? Math.floor(requestCount / rateLimiterConfig.warningThreshold)
+      : 0;
+
+  if (requestCount >= rateLimiterConfig.warningThreshold) {
+    if (user) {
+      const userRecord = await User.findById(user._id);
+      if (userRecord) {
+        await temporarilyBlockUser(userRecord, offenseCount + 1);
+        return res.status(403).json({
+          message: 'Suspicious activity detected. User temporarily blocked.',
+        });
+      }
+    }
     return res.status(403).json({
-      message: `Your account has been temporarily blocked. Please wait ${Math.ceil(
-        (user.blockExpiresAt - currentTime) / 1000 / 60,
-      )} minutes before trying again.`,
+      message: 'Suspicious activity detected. Temporary block applied.',
     });
   }
 
-  // Block the user for the calculated duration
-  await temporarilyBlockUser(user._id, blockDuration);
-  return res.status(403).json({
-    message: `Suspicious activity detected. Your account has been temporarily blocked for ${blockDuration / 1000 / 60} minutes.`,
-  });
-}
-
-async function temporarilyBlockUser(userId, blockDuration) {
-  const user = await User.findById(userId);
-  if (user) {
-    const currentTime = Date.now();
-
-    // Reset status if block has expired
-    if (user.isBlocked && user.blockExpiresAt <= currentTime) {
-      user.isBlocked = false;
-      user.blockExpiresAt = null;
-      user.offenseCount = 0; // Reset offense count
-      await user.save();
-      console.log(`Block expired for user ${user.email}. Status reset.`);
-    }
-
-    // Block the user if not already blocked
-    if (!user.isBlocked) {
-      user.isBlocked = true;
-      user.blockExpiresAt = currentTime + blockDuration;
-      user.offenseCount = (user.offenseCount || 0) + 1; // Increment offense count
-      await user.save();
-      console.log(
-        `User ${user.email} is temporarily blocked for ${blockDuration / 1000 / 60} minutes.`,
-      );
-    }
-  }
-}
-
-async function trackSuspiciousActivity(req, res, next) {
-  const ip = req.ip;
-  const key = `requests:${ip}`;
-  const SUSPICIOUS_THRESHOLD = 20; // Dynamic thresholds can also be calculated
-  const BLOCK_THRESHOLD = 30;
-
-  const count = parseInt(await redis.get(key), 10) || 0;
-
-  // Fetch offense count and dynamically adjust thresholds
-  const offenseCount =
-    count >= SUSPICIOUS_THRESHOLD
-      ? Math.floor(count / SUSPICIOUS_THRESHOLD)
-      : 0;
-
-  // Handle suspicious activity
-  if (count >= SUSPICIOUS_THRESHOLD) {
-    if (req.user) {
-      const user = await User.findOne({ email: req.user.email });
-      if (user) {
-        return await handleUserBlock(user, offenseCount, res);
-      }
-      return res.status(404).json({ message: 'User not found' });
-    }
-    return res.status(403).json({ message: 'Suspicious activity detected.' });
-  }
-
-  // Handle block threshold
-  if (count >= BLOCK_THRESHOLD) {
-    if (!req.user) {
-      return res.status(401).json({ message: 'User not authenticated' });
-    }
-
-    const user = await User.findOne({ email: req.user.email });
-    if (user) {
-      return await handleUserBlock(user, offenseCount + 1, res);
-    }
-    return res.status(404).json({ message: 'User not found' });
-  }
-
-  // Increment the request count dynamically
-  const expiry = Math.max(10, 30 - offenseCount); // Reduce expiry time with offenses
-  redis.setex(key, expiry, count + 1);
+  redis.setex(requestKey, 30 - offenseCount, requestCount + 1);
   next();
+};
+
+// Temporary user block
+async function temporarilyBlockUser(user, offenseCount) {
+  const now = Date.now();
+  const blockDuration = Math.round(
+    rateLimiterConfig.baseTemporaryBlockDuration *
+      Math.pow(rateLimiterConfig.escalationFactor, offenseCount),
+  );
+
+  user.isBlocked = true;
+  user.blockExpiresAt = now + blockDuration;
+  await user.save();
+
+  logger.info(
+    `User ${user.email} blocked for ${blockDuration / 60 / 1000} minutes due to suspicious activity.`,
+  );
 }
 
-// **Export Middleware**
 module.exports = {
   rateLimitMiddleware,
   trackSuspiciousActivity,

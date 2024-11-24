@@ -1,11 +1,12 @@
 const redis = require('../config/ioredis');
-const useragent = require('useragent');
+const fetch = require('node-fetch');
 const { createLogger } = require('../utils/logger');
+const { getClientIp } = require('request-ip');
 
 // Create a logger instance for this module
 const logger = createLogger();
 
-// Configuration for Rules
+// Rules Configuration
 const RULES = {
   requestLimits: {
     globalRequestLimit: 2000,
@@ -26,7 +27,7 @@ const RULES = {
       /bot|crawler|spider|scraper|headless|selenium|phantomjs/i,
     ],
     logUnknownUserAgents: true,
-    customBotIPs: async () => await redis.smembers('customBotIPs'),
+    customBotIPs: async () => redis.smembers('customBotIPs'),
   },
   honeypot: {
     enabled: true,
@@ -45,76 +46,96 @@ const RULES = {
       await redis.set('globalFailSafeActive', true, 'EX', 660);
     },
   },
-  whitelistedIPs: async () => await redis.smembers('whitelistedIPs'),
+  whitelistedIPs: async () => redis.smembers('whitelistedIPs'),
 };
 
-// Utility: Logging
+// Utility: Log Activity
 const logActivity = async (type, details) => {
   logger.info({ type, details, timestamp: new Date() });
 };
 
+// Utility: Check IP Reputation
+const checkIPReputation = async (ip) => {
+  try {
+    if (!process.env.ABUSEIPDB_API_KEY) {
+      logger.warn('AbuseIPDB API key is not set.');
+      return false;
+    }
+
+    const response = await fetch(
+      `https://api.abuseipdb.com/api/v2/check?ipAddress=${ip}`,
+      {
+        headers: {
+          Key: process.env.ABUSEIPDB_API_KEY,
+          Accept: 'application/json',
+        },
+      },
+    );
+
+    if (!response.ok) {
+      throw new Error(
+        `AbuseIPDB request failed with status: ${response.status}`,
+      );
+    }
+
+    const reputation = await response.json();
+    return reputation?.data?.abuseConfidenceScore >= 50;
+  } catch (err) {
+    logger.error('[ERROR] IP Reputation Check:', err.message);
+    return false;
+  }
+};
+
 // Middleware: Enhanced Bot Detection
 const enhancedBotDetection = async (req, res, next) => {
-  const ip = req.ip;
-  const userAgentString = req.headers['user-agent'] || "unknown";
+  const ip = getClientIp(req);
+  const userAgentString = req.headers['user-agent'] || 'unknown';
   const now = Date.now();
   const blockKey = `bot_block:${ip}`;
 
-  // Define invalid User-Agent strings
-  const invalidUserAgents = ["", "unknown", "Mozilla/5.0"];
-
   try {
-    // Check if IP is already blocked
     const blockStatus = await redis.get(blockKey);
-
     if (blockStatus) {
       const remainingTime = Math.ceil((parseInt(blockStatus) - now) / 1000);
-      res.setHeader("Retry-After", remainingTime);
+      res.setHeader('Retry-After', remainingTime);
       return res
         .status(403)
         .json({ message: `Blocked. Retry after ${remainingTime} seconds.` });
     }
 
-    // Parse the User-Agent string using useragent
-    const agent = useragent.parse(userAgentString);
-    const isBot =
-      RULES.botDetection.suspiciousUserAgentPatterns.some((pattern) =>
-        pattern.test(userAgentString.toLowerCase())
-      ) ||
-      invalidUserAgents.includes(userAgentString) ||
-      agent.device.family === "Spider" ||
-      agent.device.family === "Bot";
+    const isBot = RULES.botDetection.suspiciousUserAgentPatterns.some(
+      (pattern) => pattern.test(userAgentString),
+    );
 
-    if (isBot) {
-      // Block the IP and log activity
+    const isMaliciousIP = await checkIPReputation(ip);
+
+    if (isBot || isMaliciousIP) {
       const blockDuration = RULES.blocking.baseBlockDuration;
       await redis.set(
         blockKey,
         now + blockDuration * 1000,
-        "EX",
-        blockDuration
+        'EX',
+        blockDuration,
       );
-      await logActivity("BOT_DETECTION", { ip, userAgent: userAgentString });
-      return res.status(403).json({ message: "Bot detected. Access denied." });
+
+      await logActivity('BOT_DETECTION', { ip, userAgent: userAgentString });
+      return res.status(403).json({ message: 'Bot detected. Access denied.' });
     }
 
     next();
   } catch (err) {
-    logger.error("[ERROR] Bot Detection:", err);
-    return res.status(503).send("Service unavailable.");
+    logger.error('[ERROR] Enhanced Bot Detection:', err.message);
+    return res.status(503).send('Service unavailable.');
   }
 };
 
 // Middleware: Honeypot Detection
 const honeypot = async (req, res, next) => {
-  const ip = req.ip;
+  const ip = getClientIp(req);
   const redisKey = `honeypot:${ip}`;
 
   try {
-    // Await the resolved array of whitelisted IPs
     const whitelistedIPs = await RULES.whitelistedIPs();
-
-    // Check if the IP is in the whitelist
     if (whitelistedIPs.includes(ip)) return next();
 
     const isHoneypotTrigger =
