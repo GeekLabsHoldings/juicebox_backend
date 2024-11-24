@@ -514,7 +514,7 @@ exports.cancelPurchasedService = async (req, res, next) => {
 };
 
 // check domain availability endpoint
-exports.validateDomain = async (req, res, next) => {
+exports.validateDomain = async (req, res) => {
   const { domain } = req.body;
 
   if (!domain) {
@@ -524,18 +524,12 @@ exports.validateDomain = async (req, res, next) => {
   try {
     const result = await checkDomainExists(domain);
 
-    if (result.available) {
-      res.status(200).json(new ApiResponse(200, result, 'Domain available'));
-    } else {
-      res.status(200).json(new ApiResponse(200, result, 'Domain not available'));
-    }
+    res.status(200).json(new ApiResponse(200, result, result.message));
   } catch (error) {
-    if (error.message.startsWith('The TLD')) {
-      res.status(400).json({ success: false, message: error.message });
-    } else {
-      console.error('Error checking domain availability:', error);
-      res.status(500).json({ success: false, message: 'Error checking domain availability' });
-    }
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Error checking domain availability',
+    });
   }
 };
 
