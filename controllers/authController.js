@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const ApiError = require('../utils/apiError');
 const ApiResponse = require('../utils/apiResponse');
 const User = require('../models/userModel');
+const redis = require('../config/ioredis');
 const asyncHandler = require('express-async-handler');
 const { catchError } = require('../middlewares/catchErrorMiddleware');
 const { sendEmail } = require('../utils/sendEmail');
@@ -17,8 +18,7 @@ const { setCookie } = require('../utils/cookies');
 // SignUp Controller
 exports.signUpController = catchError(
   asyncHandler(async (req, res, next) => {
-    const { firstName, lastName, email, password, ISD, phoneNumber, DOB } =
-      req.body;
+    const { firstName, lastName, email, password, ISD, phoneNumber, DOB } = req.body;
 
     const existingUser = await User.findOne({ email });
     if (existingUser) return next(new ApiError('Email already exists', 400));
@@ -26,45 +26,93 @@ exports.signUpController = catchError(
     // Validate and format phone number
     const formattedPhoneNumber = formatPhoneNumber(ISD, phoneNumber);
 
-    // Capitalize firstName and lastName
+    // Capitalize names
     const formattedFirstName = capitalizeFirstLetter(firstName);
     const formattedLastName = capitalizeFirstLetter(lastName);
 
-    const newUser = new User({
+    // Generate a verification token
+    const token = jwt.sign(
+      { email },
+      process.env.JWT_SECRET_KEY,
+      { expiresIn: '15m' } // Token valid for 15 minutes
+    );
+
+    // Store user data temporarily in Redis
+    const userData = JSON.stringify({
       firstName: formattedFirstName,
       lastName: formattedLastName,
       email,
-      password,
+      password: await bcrypt.hash(password, 12),
       ISD,
       phoneNumber: formattedPhoneNumber,
       DOB,
     });
 
-    await newUser.save();
+    await redis.setex(`signup:${email}`, 900, userData); // Store for 15 minutes
 
-    const token = jwt.sign(
-      { email: newUser.email },
-      process.env.JWT_SECRET_KEY,
-      { expiresIn: process.env.JWT_EXPIRE_TIME },
-    );
-
+    // Send email for verification
     await sendEmail(
       email,
       'Please Verify Your Email',
-      verifyEmailTemplate(token),
+      verifyEmailTemplate(token)
     );
 
-    res
-      .status(201)
-      .json(
-        new ApiResponse(
-          201,
-          newUser,
-          'User created successfully, please verify your email',
-        ),
-      );
-  }),
+    res.status(201).json(
+      new ApiResponse(201, {}, 'User registered successfully, please verify your email')
+    );
+  })
 );
+
+// exports.signUpController = catchError(
+//   asyncHandler(async (req, res, next) => {
+//     const { firstName, lastName, email, password, ISD, phoneNumber, DOB } =
+//       req.body;
+
+//     const existingUser = await User.findOne({ email });
+//     if (existingUser) return next(new ApiError('Email already exists', 400));
+
+//     // Validate and format phone number
+//     const formattedPhoneNumber = formatPhoneNumber(ISD, phoneNumber);
+
+//     // Capitalize firstName and lastName
+//     const formattedFirstName = capitalizeFirstLetter(firstName);
+//     const formattedLastName = capitalizeFirstLetter(lastName);
+
+//     const newUser = new User({
+//       firstName: formattedFirstName,
+//       lastName: formattedLastName,
+//       email,
+//       password,
+//       ISD,
+//       phoneNumber: formattedPhoneNumber,
+//       DOB,
+//     });
+
+//     await newUser.save();
+
+//     const token = jwt.sign(
+//       { email: newUser.email },
+//       process.env.JWT_SECRET_KEY,
+//       { expiresIn: process.env.JWT_EXPIRE_TIME },
+//     );
+
+//     await sendEmail(
+//       email,
+//       'Please Verify Your Email',
+//       verifyEmailTemplate(token),
+//     );
+
+//     res
+//       .status(201)
+//       .json(
+//         new ApiResponse(
+//           201,
+//           newUser,
+//           'User created successfully, please verify your email',
+//         ),
+//       );
+//   }),
+// );
 
 // exports.signInController = catchError(
 //   asyncHandler(async (req, res, next) => {
@@ -117,21 +165,53 @@ exports.signInController = catchError(
 exports.verifyEmailController = catchError(
   asyncHandler(async (req, res, next) => {
     const { token } = req.params;
+
     try {
       const decoded = jwt.verify(token, process.env.JWT_SECRET_KEY);
-      const user = await User.findOne({ email: decoded.email });
-      if (!user) return next(new ApiError('User not found', 404));
-      user.verifyEmail = true;
-      await user.save();
-      res
-        .status(200)
-        .json(new ApiResponse(200, {}, 'Email verified successfully'));
+      const email = decoded.email;
+
+      // Retrieve user data from Redis
+      const userData = await redis.get(`signup:${email}`);
+      if (!userData) return next(new ApiError('Token expired or invalid', 400));
+
+      const userObject = JSON.parse(userData);
+
+      // Save user to MongoDB
+      const newUser = new User({
+        ...userObject,
+        verifyEmail: true,
+      });
+      await newUser.save();
+
+      // Remove user data from Redis
+      await redis.del(`signup:${email}`);
+
+      res.status(200).json(new ApiResponse(200, {}, 'Email verified successfully'));
     } catch (err) {
       console.error('Email verification error:', err);
       return next(new ApiError('Invalid or expired token', 400));
     }
-  }),
+  })
 );
+
+// exports.verifyEmailController = catchError(
+//   asyncHandler(async (req, res, next) => {
+//     const { token } = req.params;
+//     try {
+//       const decoded = jwt.verify(token, process.env.JWT_SECRET_KEY);
+//       const user = await User.findOne({ email: decoded.email });
+//       if (!user) return next(new ApiError('User not found', 404));
+//       user.verifyEmail = true;
+//       await user.save();
+//       res
+//         .status(200)
+//         .json(new ApiResponse(200, {}, 'Email verified successfully'));
+//     } catch (err) {
+//       console.error('Email verification error:', err);
+//       return next(new ApiError('Invalid or expired token', 400));
+//     }
+//   }),
+// );
 
 // @desc    Forgot password
 // @route   POST /api/v1/auth/forgotPassword

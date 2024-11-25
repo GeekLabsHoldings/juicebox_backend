@@ -7,7 +7,7 @@ exports.verifyEmailTemplate = (token) => {
         Hello,
       </p>
       <p style="font-size: 16px; color: #555;">
-        Thank you for registering with our service. To complete your registration, please verify your email address by clicking the button below:
+        Thank you for registering with our service. To complete your registration, please verify your email address by clicking the button below. Please note that this link will expire in <strong>15 minutes</strong>.
       </p>
       <div style="text-align: center; margin: 20px 0;">
         <a href="${verificationLink}" style="background-color: #FABC3F; color: black; padding: 10px 20px; text-decoration: none; font-size: 18px; border-radius: 8px;">Verify Email</a>

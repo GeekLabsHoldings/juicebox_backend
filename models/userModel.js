@@ -163,30 +163,6 @@ userSchema.pre('save', async function (next) {
   next();
 });
 
-// exports = async function() {
-//   const db = context.services.get("mongodb-atlas").db("juice-box");
-//   const users = db.collection("users");
-
-//   const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
-
-//   try {
-//     const result = await users.deleteMany({
-//       verifyEmail: false,
-//       createdAt: { $lte: thirtyMinutesAgo },
-//     });
-
-//     if (result.deletedCount > 0) {
-//       console.log(`Removed ${result.deletedCount} unverified users.`);
-//     } else {
-//       console.log("No unverified users to remove.");
-//     }
-//   } catch (error) {
-//     console.error("Error removing unverified users:", error);
-//   }
-// };
-
-// two weekly cron job to remove unverified users
-// cron.schedule("0 0 * * *", async () => {
 cron.schedule('0 0 1,15 * *', async () => {
   const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
 
