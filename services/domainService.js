@@ -5,122 +5,145 @@ const {
 } = require('@aws-sdk/client-route-53-domains');
 const { route53 } = require('../config/awsConfig');
 
-// Limit concurrent requests to prevent throttling
-const CONCURRENCY_LIMIT = 5;
-let limit;
-(async () => {
-  const pLimit = (await import('p-limit')).default;
-  limit = pLimit(CONCURRENCY_LIMIT);
-})();
-
-
-// Utility function to get TLD from domain
-function getTLD(domain) {
-  const domainParts = domain.split('.');
-  return domainParts.pop();
+// Trie Implementation for TLD Mapping
+class TrieNode {
+  constructor() {
+    this.children = {};
+    this.isEnd = false;
+    this.priceData = null; // To store pricing directly at the node
+  }
 }
 
-// Fetch the price for multiple TLDs concurrently
-async function getPricesForTLDs(tlds) {
-  const pricePromises = tlds.map((tld) =>
-    limit(async () => {
-      try {
-        const pricesCommand = new ListPricesCommand({ Tld: tld });
-        const pricesResponse = await route53.send(pricesCommand);
-        const priceInfo = pricesResponse.Prices?.[0];
-        if (!priceInfo) throw new Error(`No prices found for TLD: ${tld}`);
-        return {
-          tld,
-          registrationPrice: priceInfo.RegistrationPrice,
-          renewalPrice: priceInfo.RenewalPrice,
-        };
-      } catch (error) {
-        console.warn(`Error fetching prices for .${tld}:`, error.message);
-        return null; // Graceful fallback
-      }
-    }),
-  );
+class Trie {
+  constructor() {
+    this.root = new TrieNode();
+  }
+
+  insert(tld, priceData) {
+    let node = this.root;
+    for (const char of tld) {
+      if (!node.children[char]) node.children[char] = new TrieNode();
+      node = node.children[char];
+    }
+    node.isEnd = true;
+    node.priceData = priceData;
+  }
+
+  search(tld) {
+    let node = this.root;
+    for (const char of tld) {
+      if (!node.children[char]) return null;
+      node = node.children[char];
+    }
+    return node.isEnd ? node.priceData : null;
+  }
+}
+
+// Utility: Extract TLD
+function getTLD(domain) {
+  const parts = domain.split('.');
+  return parts.pop();
+}
+
+// Utility: Rank domain suggestions using a Min-Heap
+function rankSuggestions(suggestions) {
+  const heap = [];
+  for (const suggestion of suggestions) {
+    heap.push(suggestion);
+  }
+  // Sorting by length for simplicity (could be adjusted to other criteria)
+  heap.sort((a, b) => a.length - b.length);
+  return heap;
+}
+
+// Fetch domain suggestions
+async function fetchDomainSuggestions(domainName) {
+  const command = new GetDomainSuggestionsCommand({
+    DomainName: domainName,
+    SuggestionCount: 20,
+    OnlyAvailable: true,
+  });
+
+  const response = await route53.send(command);
+  return response.SuggestionsList?.map((s) => s.DomainName) || [];
+}
+
+// Fetch prices for TLDs with Trie
+async function fetchPricesForTLDs(tlds, trie) {
+  const pricePromises = tlds.map(async (tld) => {
+    if (trie.search(tld)) return trie.search(tld); // Use Trie for cached results
+
+    try {
+      const command = new ListPricesCommand({ Tld: tld });
+      const response = await route53.send(command);
+      const priceInfo = response.Prices?.[0];
+      if (!priceInfo) throw new Error(`No prices found for TLD: ${tld}`);
+      const priceData = {
+        tld,
+        registrationPrice: priceInfo.RegistrationPrice,
+        renewalPrice: priceInfo.RenewalPrice,
+      };
+      trie.insert(tld, priceData); // Cache price in Trie
+      return priceData;
+    } catch (error) {
+      console.warn(`Error fetching prices for .${tld}: ${error.message}`);
+      return null;
+    }
+  });
 
   const results = await Promise.all(pricePromises);
-  return results.filter(Boolean); // Remove null entries
+  return results.filter(Boolean); // Remove null results
+}
+
+// Map suggestions with prices using Trie
+function mapDomainSuggestionsWithPrices(suggestions, trie) {
+  return suggestions
+    .map((suggestion) => {
+      const tld = getTLD(suggestion);
+      const priceData = trie.search(tld);
+      return priceData ? { domain: suggestion, prices: priceData } : null;
+    })
+    .filter(Boolean);
+}
+
+// Fetch domain suggestions with pricing
+async function getDomainSuggestionsWithPrices(domain, trie) {
+  const suggestions = await fetchDomainSuggestions(domain);
+
+  // Get unique TLDs
+  const tlds = [...new Set(suggestions.map((s) => getTLD(s)))];
+  const prices = await fetchPricesForTLDs(tlds, trie);
+
+  // Rank and map suggestions
+  const rankedSuggestions = rankSuggestions(suggestions);
+  return mapDomainSuggestionsWithPrices(rankedSuggestions, trie);
 }
 
 // Check domain availability
 async function checkDomainAvailability(domain) {
-  try {
-    const availabilityCommand = new CheckDomainAvailabilityCommand({
-      DomainName: domain,
-    });
-    const availabilityResponse = await route53.send(availabilityCommand);
-    return availabilityResponse.Availability === 'AVAILABLE';
-  } catch (error) {
-    console.error(`Error checking availability for ${domain}:`, error.message);
-    throw error;
-  }
+  const command = new CheckDomainAvailabilityCommand({ DomainName: domain });
+  const response = await route53.send(command);
+  return response.Availability === 'AVAILABLE';
 }
 
-// Fetch domain suggestions with prices
-async function getDomainSuggestionsWithPrices(domain, maxSuggestions = 20) {
-  try {
-    const suggestionsCommand = new GetDomainSuggestionsCommand({
-      DomainName: domain,
-      OnlyAvailable: true,
-      SuggestionCount: maxSuggestions,
-    });
-    const suggestionsResponse = await route53.send(suggestionsCommand);
-    const suggestionsList = suggestionsResponse.SuggestionsList || [];
-    const tlds = [...new Set(suggestionsList.map((s) => getTLD(s.DomainName)))];
-
-    // Fetch prices for all unique TLDs
-    const tldPrices = await getPricesForTLDs(tlds);
-    const priceMap = Object.fromEntries(
-      tldPrices.map((p) => [
-        p.tld,
-        {
-          registrationPrice: p.registrationPrice,
-          renewalPrice: p.renewalPrice,
-        },
-      ]),
-    );
-
-    // Map suggestions to include prices
-    return suggestionsList
-      .map((suggestion) => {
-        const tld = getTLD(suggestion.DomainName);
-        const prices = priceMap[tld];
-        return prices ? { DomainName: suggestion.DomainName, prices } : null;
-      })
-      .filter(Boolean); // Filter out suggestions without prices
-  } catch (error) {
-    console.error('Error fetching domain suggestions:', error.message);
-    throw error;
-  }
-}
-
-// Main function to check domain availability and get suggestions if unavailable
+// Main function: Check domain existence and fetch suggestions/prices
 async function checkDomainExists(domain) {
-  const domainTLD = getTLD(domain);
+  const trie = new Trie(); // Initialize Trie for price mapping
 
   try {
-    // Run availability and TLD price checks in parallel
-    const [isAvailable, prices] = await Promise.all([
+    // Fetch availability and suggestions/prices concurrently
+    const [isAvailable, suggestionsWithPrices] = await Promise.all([
       checkDomainAvailability(domain),
-      getPricesForTLDs([domainTLD]).then((results) => results[0] || null),
+      getDomainSuggestionsWithPrices(domain, trie),
     ]);
 
     if (isAvailable) {
-      return {
-        available: true,
-        prices,
-        message: `Domain ${domain} is available`,
-      };
+      return { available: true, message: `Domain ${domain} is available` };
     }
 
-    // Fetch domain suggestions only if the domain is unavailable
-    const suggestions = await getDomainSuggestionsWithPrices(domain);
     return {
       available: false,
-      suggestions,
+      suggestions: suggestionsWithPrices,
       message: `Domain ${domain} is not available`,
     };
   } catch (error) {
