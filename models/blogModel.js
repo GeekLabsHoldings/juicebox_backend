@@ -29,7 +29,7 @@ const blogSchema = new mongoose.Schema({
     type: [String],
     default: [], // Array of multiple media URLs if multiple images are uploaded
   },
-  s3AllKeys: {
+  s3Keys: {
     type: [String],
     default: [], // Array of S3 keys for the multiple media files (for deletion)
   },

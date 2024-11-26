@@ -26,7 +26,7 @@ const handleMedia = (folder, allowedTypes, maxSize) => {
         // Handle multiple mediaUrls uploads for blog
         if (req.files && req.files['mediaUrls']) {
           req.body.mediaUrls = req.files['mediaUrls'].map(file => file.location);
-          req.body.s3AllKeys = req.files['mediaUrls'].map(file => file.key);
+          req.body.s3Keys = req.files['mediaUrls'].map(file => file.key);
         }
 
         // if (req.method === 'PUT') {
@@ -64,8 +64,8 @@ const deleteMedia = () => {
     try {
       const mediaKeys = req.body.s3Key ? [req.body.s3Key] : [];
       
-      if (req.body.s3AllKeys) {
-        mediaKeys.push(...req.body.s3AllKeys);
+      if (req.body.s3Keys) {
+        mediaKeys.push(...req.body.s3Keys);
       }
 
       if (mediaKeys.length) {
