@@ -104,7 +104,7 @@ exports.getOne = (Model, populationOpt) =>
       const cacheKey = `${Model.modelName}_${id}`;
 
       const queryFn = async () => {
-        let query = Model.findById(id).lean();
+        let query = Model.findById(id);
         if (populationOpt) query = query.populate(populationOpt);
         return await query;
       };
@@ -134,7 +134,7 @@ exports.getAll = (Model, searchableFields = []) =>
 
       const queryFn = async () => {
         const documentsCounts = await Model.countDocuments(filter);
-        const apiFeatures = new ApiFeatures(Model.find(filter).lean(), req.query)
+        const apiFeatures = new ApiFeatures(Model.find(filter), req.query)
           .paginate(documentsCounts)
           .filter()
           .search(searchableFields)
