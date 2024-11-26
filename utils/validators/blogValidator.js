@@ -17,7 +17,7 @@ exports.blogValidationRules = [
 
   body('mediaUrl').optional().isURL().withMessage('Invalid media URL'),
 
-  body('mediaAllUrls')
+  body('mediaUrls')
     .optional()
     .isArray()
     .withMessage('Media URLs should be array of string'),

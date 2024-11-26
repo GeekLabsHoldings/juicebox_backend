@@ -25,7 +25,7 @@ const blogSchema = new mongoose.Schema({
     type: String,
     default: null, // The S3 key of the main blog image (for deletion)
   },
-  mediaAllUrls: {
+  mediaUrls: {
     type: [String],
     default: [], // Array of multiple media URLs if multiple images are uploaded
   },

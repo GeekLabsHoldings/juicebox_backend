@@ -6,7 +6,7 @@ const ApiError = require('../utils/apiError');
 const handleMedia = (folder, allowedTypes, maxSize) => {
   const upload = createMulterStorage(folder, allowedTypes, maxSize).fields([
     { name: 'mediaUrl', maxCount: 1 }, // Single file for mediaUrl
-    { name: 'mediaAllUrls', maxCount: 10 }, // Multiple files for mediaAllUrls
+    { name: 'mediaUrls', maxCount: 10 }, // Multiple files for mediaUrls
   ]);
 
   return async (req, res, next) => {
@@ -23,10 +23,10 @@ const handleMedia = (folder, allowedTypes, maxSize) => {
           req.body.s3Key = req.files['mediaUrl'][0].key;
         }
 
-        // Handle multiple mediaAllUrls uploads for blog
-        if (req.files && req.files['mediaAllUrls']) {
-          req.body.mediaAllUrls = req.files['mediaAllUrls'].map(file => file.location);
-          req.body.s3AllKeys = req.files['mediaAllUrls'].map(file => file.key);
+        // Handle multiple mediaUrls uploads for blog
+        if (req.files && req.files['mediaUrls']) {
+          req.body.mediaUrls = req.files['mediaUrls'].map(file => file.location);
+          req.body.s3AllKeys = req.files['mediaUrls'].map(file => file.key);
         }
 
         // if (req.method === 'PUT') {
