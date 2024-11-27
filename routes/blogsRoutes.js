@@ -4,8 +4,9 @@ const {
   getBlog,
 } = require("../controllers/blogsController");
 const { getUploadUrl } = require('../services/uploadPresignedUrl');
-// const cacheMiddleware = require('../middlewares/cachingMiddleware');
+const cacheMiddleware = require('../middlewares/cachingMiddleware');
 // Usage : cacheMiddleware(() => 'all_blogs', 120)
+// cacheMiddleware((req) => `blog_${req.params.id}`, 120)
 
 const router = express.Router();
 

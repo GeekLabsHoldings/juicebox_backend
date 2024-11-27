@@ -1,4 +1,5 @@
 const redisClient = require('../config/redis');
+const ApiError = require('../utils/apiError');
 
 const lazyRevalidation = async (key, queryFn, ttl = 3600) => {
   try {

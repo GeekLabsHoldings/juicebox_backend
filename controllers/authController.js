@@ -319,49 +319,87 @@ exports.resetPassword = asyncHandler(async (req, res, next) => {
   res.status(200).json(new ApiResponse(200, {}, 'Password reset successfully'));
 });
 
-// @desc    Login with google
+// @desc    Login with Google
 // @route   POST /api/v1/auth/google
 // @access  Public
 exports.googleLogin = asyncHandler(async (req, res, next) => {
-  const { sub, given_name, family_name, picture, email, email_verified } =
-    req.body;
+  const { sub, given_name, family_name, picture, email, email_verified } = req.body;
 
-  if (!email_verified) {
-    return next(new ApiError('Email not verified', 400));
-  }
+  // Return error directly if email is not verified
+  email_verified || next(new ApiError("Email not verified", 400));
 
   const user = await User.findOne({ email });
 
-  const formattedFirstName = capitalizeFirstLetter(given_name);
-  const formattedLastName = capitalizeFirstLetter(family_name);
-
-  if (!user) {
-    const newUser = await User.create({
-      firstName: formattedFirstName,
-      lastName: formattedLastName,
+  const userToProcess = user || 
+    await User.create({
+      firstName: capitalizeFirstLetter(given_name),
+      lastName: capitalizeFirstLetter(family_name),
       email,
       avatar: picture,
       googleId: sub,
       verifyEmail: email_verified,
     });
 
-    const token = createToken(newUser);
+  // Create token parts for layered cookies
+  const tokenParts = createTokenParts(userToProcess);
 
-    // Set the token as an HttpOnly cookie
-    setCookie(res, token);
+  // Set each token part as an HttpOnly cookie
+  setCookie(res, tokenParts);
 
-    res
-      .status(200)
-      .json(new ApiResponse(200, {}, 'User signed up successfully'));
-  }
-
-  const token = createToken(user);
-
-  // Set the token as an HttpOnly cookie
-  setCookie(res, token);
-
-  res.status(200).json(new ApiResponse(200, {}, 'User logged in successfully'));
+  // Respond with appropriate message
+  res
+    .status(200)
+    .json(
+      new ApiResponse(
+        200,
+        {},
+        user ? "User logged in successfully" : "User signed up successfully"
+      )
+    );
 });
+
+// exports.googleLogin = asyncHandler(async (req, res, next) => {
+//   const { sub, given_name, family_name, picture, email, email_verified } =
+//     req.body;
+
+//   // Check if email is verified
+//   return !email_verified
+//     ? next(new ApiError("Email not verified", 400))
+//     : null;
+
+//   const user = await User.findOne({ email });
+
+//   const formattedFirstName = capitalizeFirstLetter(given_name);
+//   const formattedLastName = capitalizeFirstLetter(family_name);
+
+//   // Create a new user if it doesn't exist, or fetch the existing one
+//   const newUser = user
+//     ? null
+//     : await User.create({
+//         firstName: formattedFirstName,
+//         lastName: formattedLastName,
+//         email,
+//         avatar: picture,
+//         googleId: sub,
+//         verifyEmail: email_verified,
+//       });
+
+//   const currentUser = user || newUser;
+
+//   // Generate token parts for cookies
+//   const tokenParts = createTokenParts(currentUser);
+
+//   // Set tokens as HttpOnly cookies
+//   setCookie(res, tokenParts);
+
+//   res.status(200).json(
+//     new ApiResponse(
+//       200,
+//       {},
+//       user ? "User logged in successfully" : "User signed up successfully"
+//     )
+//   );
+// });
 
 // exports.googleLogin = asyncHandler(async (req, res, next) => {
 //   const { sub, given_name, family_name, picture, email, email_verified } =
