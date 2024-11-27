@@ -20,7 +20,6 @@ const {
 const {
   enhancedBotDetection,
   honeypot,
-  failSafe,
 } = require('./middlewares/botDetectionMiddleware');
 const { stripeWebhook } = require('./services/paymentService');
 const ApiError = require('./utils/apiError');
@@ -95,7 +94,6 @@ app.use(
 app.use(express.static(path.join(__dirname, 'uploads')));
 
 // Middleware: Custom Middlewares
-app.use(failSafe);
 app.use(enhancedBotDetection);
 app.use(honeypot);
 app.use(rateLimitMiddleware);
