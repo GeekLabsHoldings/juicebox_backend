@@ -1,13 +1,17 @@
 const redis = require('../config/ioredis');
 const { createLogger } = require('../utils/logger');
 const { getClientIp } = require('request-ip');
+const crypto = require('crypto');
+const schedule = require('node-schedule');
 
+// Logger instance
 const logger = createLogger();
 
+// Configuration Constants
 const RULES = {
   blocking: {
-    baseBlockDuration: 10 * 60, // 10 minutes
-    maxBlockDuration: 7 * 24 * 60 * 60, // 7 days
+    baseBlockDuration: 10 * 60, // 10 minutes in seconds
+    maxBlockDuration: 7 * 24 * 60 * 60, // 7 days in seconds
   },
   botDetection: {
     suspiciousUserAgentPatterns: [
@@ -16,69 +20,102 @@ const RULES = {
     customBotIPs: async () => redis.smembers('customBotIPs'),
   },
   honeypot: {
-    fakeEndpoints: ['/trap-api', '/forbidden/secret'],
-    decoyAssets: ['/fake.js', '/bait.png'],
+    fakeEndpoints: () =>
+      Array.from({ length: 3 }, () => `/trap-${crypto.randomUUID()}`),
+    decoyAssets: () =>
+      Array.from({ length: 3 }, () => `/asset-${crypto.randomUUID()}`),
+    fakeFieldNames: () => {
+      const fields = ['username', 'email', 'password', 'phoneNumber'];
+      return fields.reduce((acc, field) => {
+        acc[field] = Buffer.from(
+          `${field}_${crypto.randomBytes(4).toString('hex')}`,
+        ).toString('base64');
+        return acc;
+      }, {});
+    },
   },
   whitelistedIPs: async () => redis.smembers('whitelistedIPs'),
 };
 
-// Utility: Calculate Block Duration
+// Schedule regular honeypot rotation
+schedule.scheduleJob('0 * * * *', () => {
+  RULES.honeypot.fakeEndpoints = () => [
+    `/trap-${crypto.randomUUID()}`,
+    `/bait-${crypto.randomUUID()}`,
+    `/secret-${crypto.randomUUID()}.json`,
+  ];
+  RULES.honeypot.decoyAssets = () => [
+    `/fake-${crypto.randomUUID()}.js`,
+    `/trap-${crypto.randomUUID()}.png`,
+  ];
+  logger.info('Honeypot traps rotated successfully.');
+});
+
+// Utility Functions
+const generateDecoyResponse = () => {
+  const randomFields = ['firstName', 'lastName', 'email', 'avatar'];
+  return randomFields.reduce((acc, field) => {
+    acc[field] =
+      field === 'avatar'
+        ? `/avatars/${crypto.randomUUID()}.png`
+        : `${field}-${crypto.randomBytes(4).toString('hex')}@fake.com`;
+    return acc;
+  }, {});
+};
+
 const calculateBlockDuration = (abuseScore) => {
   const { baseBlockDuration, maxBlockDuration } = RULES.blocking;
-
-  // Scale block time between base and max based on abuse score (0–100)
   const scaledDuration =
     baseBlockDuration +
     ((maxBlockDuration - baseBlockDuration) * abuseScore) / 100;
-
-  return Math.min(scaledDuration, maxBlockDuration); // Cap at maxBlockDuration
+  return Math.min(scaledDuration, maxBlockDuration);
 };
 
-// Utility: Check IP Reputation
 const checkIPReputation = async (ip) => {
   try {
     const whitelistedIPs = await RULES.whitelistedIPs();
     if (whitelistedIPs.includes(ip)) return false;
 
     const ipData = JSON.parse((await redis.get(`ipReputation:${ip}`)) || '{}');
-    return ipData.abuseScore || 0; // Return abuse score (default to 0)
+    return ipData.abuseScore || 0;
   } catch (err) {
-    logger.error('[ERROR] Check IP Reputation:', err.message);
+    logger.error(`Error checking IP reputation: ${err.message}`);
     return 0;
   }
 };
 
-// Utility: Update IP Reputation
 const updateIPReputation = async (ip, event) => {
-  const ipData = JSON.parse((await redis.get(`ipReputation:${ip}`)) || '{}');
-  const currentScore = ipData.abuseScore || 0;
+  try {
+    const ipData = JSON.parse((await redis.get(`ipReputation:${ip}`)) || '{}');
+    const currentScore = ipData.abuseScore || 0;
 
-  // Increment score based on the event type
-  const increment =
-    event === 'honeypot'
-      ? 20
-      : event === 'bot'
-        ? 30
-        : event === 'malicious'
-          ? 10
-          : 0;
-  const newScore = Math.min(currentScore + increment, 100); // Cap at 100
+    const increment =
+      {
+        honeypot: 20,
+        bot: 30,
+        malicious: 10,
+      }[event] || 0;
 
-  await redis.set(
-    `ipReputation:${ip}`,
-    JSON.stringify({
-      abuseScore: newScore,
-      reportCount: (ipData.reportCount || 0) + 1,
-      lastReported: new Date().toISOString(),
-    }),
-    'EX',
-    RULES.blocking.maxBlockDuration,
-  );
+    const newScore = Math.min(currentScore + increment, 100);
+    await redis.set(
+      `ipReputation:${ip}`,
+      JSON.stringify({
+        abuseScore: newScore,
+        reportCount: (ipData.reportCount || 0) + 1,
+        lastReported: new Date().toISOString(),
+      }),
+      'EX',
+      RULES.blocking.maxBlockDuration,
+    );
 
-  return newScore;
+    return newScore;
+  } catch (err) {
+    logger.error(`Error updating IP reputation: ${err.message}`);
+    return 0;
+  }
 };
 
-// Middleware: Enhanced Bot Detection
+// Middleware
 const enhancedBotDetection = async (req, res, next) => {
   const ip = getClientIp(req);
   const userAgent = req.headers['user-agent'] || 'unknown';
@@ -90,72 +127,65 @@ const enhancedBotDetection = async (req, res, next) => {
 
     const abuseScore = await checkIPReputation(ip);
 
-    if (isBot || abuseScore >= 50) {
+    if (isBot || abuseScore >= 30) {
+      logger.warn(`Throttling IP: ${ip} due to suspicious behavior.`);
+      res.set('Retry-After', 30);
+    }
+
+    if (abuseScore >= 50) {
       const newScore = await updateIPReputation(
         ip,
         isBot ? 'bot' : 'malicious',
       );
-
-      // Dynamically calculate block duration
       const blockDuration = calculateBlockDuration(newScore);
 
-      await redis.set(
-        `block:${ip}`,
-        true,
-        'EX',
-        Math.ceil(blockDuration / 1000),
-      );
+      await redis.set(`bot_block:${ip}`, true, 'EX', blockDuration);
       logger.warn(
         `Blocked IP: ${ip} for ${Math.ceil(blockDuration / 60)} minutes`,
       );
 
       return res.status(403).json({
-        message: `Access denied due to malicious activity. Blocked for ${Math.ceil(
-          blockDuration / 60,
-        )} minutes.`,
+        message: `Access denied. Blocked for ${Math.ceil(blockDuration / 60)} minutes.`,
       });
     }
 
     next();
   } catch (err) {
-    logger.error('[ERROR] Enhanced Bot Detection:', err.message);
+    logger.error(`Error in enhanced bot detection: ${err.message}`);
     res.status(503).send('Service unavailable.');
   }
 };
 
-// Middleware: Honeypot Detection
 const honeypot = async (req, res, next) => {
   const ip = getClientIp(req);
 
   try {
+    const fakeEndpoints = RULES.honeypot.fakeEndpoints();
+    const decoyAssets = RULES.honeypot.decoyAssets();
+
     const isHoneypotTrigger =
-      RULES.honeypot.fakeEndpoints.includes(req.path) ||
-      RULES.honeypot.decoyAssets.some((asset) => req.path.includes(asset));
+      fakeEndpoints.includes(req.path) ||
+      decoyAssets.some((asset) => req.path.includes(asset));
 
     if (isHoneypotTrigger) {
       const newScore = await updateIPReputation(ip, 'honeypot');
-
-      // Dynamically calculate block duration
       const blockDuration = calculateBlockDuration(newScore);
 
-      await redis.set(
-        `block:${ip}`,
-        true,
-        'EX',
-        Math.ceil(blockDuration / 1000),
-      );
+      await redis.set(`honeypot_block:${ip}`, true, 'EX', blockDuration);
       logger.warn(
         `Honeypot triggered. Blocked IP: ${ip} for ${Math.ceil(blockDuration / 60)} minutes`,
       );
 
       return res.status(403).json({
         message: 'Access forbidden.',
+        decoyData: generateDecoyResponse(),
+        fakeFields: RULES.honeypot.fakeFieldNames(),
       });
     }
 
     next();
   } catch (err) {
-    logger.error('[ERROR] Honeypot Detection:', err.message);
+    logger.error(`Error in honeypot detection: ${err.message}`);
     next();
   }
 };

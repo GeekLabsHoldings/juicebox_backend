@@ -22,7 +22,6 @@ exports.getUploadUrl = async (req, res, next) => {
       files.map(async (file) => {
         const { folder, fileName, contentType } = file;
 
-        // Validate file details
         if (!folder || !fileName || !contentType) {
           throw new ApiError(
             'Each file object must include "folder", "fileName", and "contentType".',
