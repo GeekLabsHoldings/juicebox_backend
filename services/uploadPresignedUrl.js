@@ -8,8 +8,8 @@ const ApiResponse = require('../utils/apiResponse');
 /**
  * Handles requests to generate pre-signed upload URLs for multiple files.
  */
-exports.getUploadUrl = catchError(asyncHandler(async (req, res) => {
-  
+exports.getUploadUrl = catchError(
+  asyncHandler(async (req, res) => {
     const { folder, files } = req.body;
 
     // Validate input
@@ -30,21 +30,31 @@ exports.getUploadUrl = catchError(asyncHandler(async (req, res) => {
         if (!fileName || !contentType) {
           throw new ApiError(
             'Each file object must include "fileName" and "contentType".',
-            400
+            400,
           );
         }
 
         const uniqueFileName = `${uuidv4()}_${fileName}`;
         const key = `${folder}/${uniqueFileName}`;
-        const uploadUrl = await generatePresignedUrl(bucketName, key, contentType);
+        const uploadUrl = await generatePresignedUrl(
+          bucketName,
+          key,
+          contentType,
+        );
 
         return { uploadUrl, key };
-      })
+      }),
     );
 
     // Send success response
-    res.status(200).json(
-      new ApiResponse(200, { uploadUrls }, 'Pre-signed URLs generated successfully')
-    );
-  })
+    res
+      .status(200)
+      .json(
+        new ApiResponse(
+          200,
+          { uploadUrls },
+          'Pre-signed URLs generated successfully',
+        ),
+      );
+  }),
 );
