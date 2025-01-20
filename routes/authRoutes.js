@@ -20,7 +20,7 @@ const validatorMiddleware = require('../middlewares/validationMiddleware.js');
 
 const router = express.Router();
 
-router.post("/signup", signupValidator, signUpController);
+router.post("/signup", validatorMiddleware, signupValidator, signUpController);
 router.post("/login", loginValidator, signInController);
 router.post("/logout", logoutController);
 router.get("/verify-email/:token", verifyEmailController);

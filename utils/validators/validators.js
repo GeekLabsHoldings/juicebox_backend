@@ -60,28 +60,33 @@ const validateStatus = (fieldName, allowedStatuses, location = 'body') =>
     .withMessage(`${fieldName} must be one of: ${allowedStatuses.join(', ')}`);
 
 // Check birth date is not in the future (at least 16 years old)
-const checkBirthDate = (fieldName, location = 'body') =>
-  getValidator(location, fieldName)
-    .isISO8601()
-    .withMessage(`${fieldName} must be a valid date format (ISO 8601)`)
-    .custom((value) => {
-      const inputDate = new Date(value);
-      const today = new Date();
+const checkBirthDate = () => {
+  return (inputDate) => {
+    const today = new Date();
+    const minAgeDate = new Date(today.setFullYear(today.getFullYear() - 16)); // 16 years ago
+    const maxAgeDate = new Date(today.setFullYear(today.getFullYear() - 100)); // 100 years ago
 
-      // Minimum age check (16 years old)
-      const minAgeDate = new Date(today.setFullYear(today.getFullYear() - 16));
-      if (inputDate > minAgeDate) {
-        throw new ApiError('You must be at least 16 years old', 400);
-      }
+    // Convert inputDate to a Date object
+    const userDOB = new Date(inputDate);
 
-      // Maximum age check (120 years old)
-      const maxAgeDate = new Date(today.setFullYear(today.getFullYear() - 120));
-      if (inputDate < maxAgeDate) {
-        throw new ApiError('You cannot be older than 120 years', 400);
-      }
+    // Check if the date is valid
+    if (isNaN(userDOB.getTime())) {
+      throw new ApiError('Invalid date of birth', 400);
+    }
 
-      return true;
-    });
+    // Minimum age check (16 years old)
+    if (userDOB > minAgeDate) {
+      throw new ApiError('You must be at least 16 years old', 400);
+    }
+
+    // Maximum age check (100 years old)
+    if (userDOB < maxAgeDate) {
+      throw new ApiError('You cannot be older than 100 years', 400);
+    }
+
+    return true; // Validation passed
+  };
+};
 
 // Check if an item exists in the database
 // const checkExists = async (model, id) => {

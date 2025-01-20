@@ -45,11 +45,6 @@ if (process.env.NODE_ENV === 'development') {
   console.log(`Mode: ${process.env.NODE_ENV}`);
 }
 
-// app.use(cors({
-//   origin: true, // Allow all origins for testing; restrict in production
-//   credentials: true,
-// }));
-
 // CORS Middleware
 const allowlist = process.env.ALLOWLIST ? process.env.ALLOWLIST.split(',') : [];
 app.use(

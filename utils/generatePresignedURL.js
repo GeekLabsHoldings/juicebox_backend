@@ -1,9 +1,11 @@
+const asyncHandler = require('express-async-handler');
+const { catchError } = require('../middlewares/catchErrorMiddleware');
 const { PutObjectCommand } = require('@aws-sdk/client-s3');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 const { s3 } = require('../config/awsConfig');
 
-const generatePresignedUrl = async (bucket, key, contentType, expiresIn = 900) => {
-  try {
+const generatePresignedUrl = catchError(
+  asyncHandler(async (bucket, key, contentType, expiresIn = 900) => {
     const command = new PutObjectCommand({
       Bucket: bucket,
       Key: key,
@@ -11,10 +13,7 @@ const generatePresignedUrl = async (bucket, key, contentType, expiresIn = 900) =
     });
 
     return await getSignedUrl(s3, command, { expiresIn });
-  } catch (error) {
-    console.error('Error generating pre-signed URL:', error);
-    throw new Error('Failed to generate pre-signed URL.');
-  }
-};
+  }),
+);
 
 module.exports = generatePresignedUrl;

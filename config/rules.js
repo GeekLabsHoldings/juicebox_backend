@@ -35,7 +35,6 @@ module.exports = {
     maxAllowedRequests: 1000,
     duration: 300, // seconds
     globalFailSafeAction: async () => {
-      logger.warn('Activating fail-safe. Redirecting traffic.');
       await redis.set('globalFailSafeActive', true, 'EX', 660);
     },
   },

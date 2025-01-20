@@ -2,10 +2,6 @@ const { RateLimiterRedis } = require('rate-limiter-flexible');
 const User = require('../models/userModel');
 const redis = require('../config/ioredis');
 const requestIp = require('request-ip');
-const { createLogger } = require('../utils/logger');
-
-// Logger setup
-const logger = createLogger('rateLimiter.log');
 
 // Rate limiter configuration
 const rateLimiterConfig = {
@@ -60,9 +56,6 @@ async function handleOffense(ip, res) {
     rateLimiterConfig.decayTime,
   );
 
-  logger.warn(
-    `IP ${ip} temporarily blocked for ${blockDuration / 60} minutes.`,
-  );
   return res.status(429).json({
     message: `You have been temporarily blocked. Retry after ${blockDuration / 60} minutes.`,
   });
@@ -133,10 +126,6 @@ async function temporarilyBlockUser(user, offenseCount) {
   user.isBlocked = true;
   user.blockExpiresAt = now + blockDuration;
   await user.save();
-
-  logger.info(
-    `User ${user.email} blocked for ${blockDuration / 60 / 1000} minutes due to suspicious activity.`,
-  );
 }
 
 module.exports = {

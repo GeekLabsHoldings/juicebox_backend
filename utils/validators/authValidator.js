@@ -56,9 +56,7 @@ exports.signupValidator = [
   check('DOB')
     .isDate()
     .withMessage('Date of birth required')
-    .custom(checkBirthDate('DOB')),
-
-  validatorMiddleware,
+    .custom(checkBirthDate()),
 ];
 
 exports.loginValidator = [
